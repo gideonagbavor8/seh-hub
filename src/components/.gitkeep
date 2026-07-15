@@ -1,0 +1,4 @@
+// src/components/.gitkeep
+// This directory holds all hand-crafted UI components for SEH Hub.
+// No UI component libraries (shadcn, MUI, Radix, etc.) are used.
+// Components will be added phase by phase.
