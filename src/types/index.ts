@@ -119,3 +119,41 @@ export interface ApiError {
 }
 
 export type ApiResponse<T = unknown> = ApiSuccess<T> | ApiError;
+
+// ---------------------------------------------------------------------------
+// NextAuth types augmentation
+// ---------------------------------------------------------------------------
+import type { DefaultSession } from "next-auth";
+
+declare module "next-auth" {
+  interface Session {
+    user: {
+      id: string;
+      role: UserRole;
+      school_id: string;
+      school_slug: string;
+      full_name: string;
+      avatar_url: string | null;
+    } & DefaultSession["user"];
+  }
+
+  interface User {
+    id: string;
+    role: UserRole;
+    school_id: string;
+    school_slug: string;
+    full_name: string;
+    avatar_url: string | null;
+  }
+}
+
+declare module "next-auth/jwt" {
+  interface JWT {
+    id: string;
+    role: UserRole;
+    school_id: string;
+    school_slug: string;
+    full_name: string;
+    avatar_url: string | null;
+  }
+}
