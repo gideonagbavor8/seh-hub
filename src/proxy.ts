@@ -31,6 +31,15 @@ export default auth((req) => {
     if (!isLoggedIn) {
       return NextResponse.redirect(new URL("/login", nextUrl));
     }
+    
+    // Redirect /dashboard or /dashboard/ to role-specific sub-routes
+    if (nextUrl.pathname === "/dashboard" || nextUrl.pathname === "/dashboard/") {
+      const role = req.auth?.user?.role;
+      if (role === "admin" || role === "teacher") {
+        return NextResponse.redirect(new URL("/dashboard/overview", nextUrl));
+      }
+      return NextResponse.redirect(new URL("/dashboard/feed", nextUrl));
+    }
   }
 
   if (isLoggedIn) {
