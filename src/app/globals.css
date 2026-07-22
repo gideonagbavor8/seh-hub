@@ -1,12 +1,21 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@400;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap');
 
 @import "tailwindcss";
 
+/* ─── Design Tokens ─────────────────────────────────────────────────── */
 :root {
-  --background: #ffffff;
-  --foreground: #000000;
+  --background: #0A0A0A;
+  --foreground: #ffffff;
+  --surface: #111111;
+  --surface-elevated: #1A1A1A;
+  --border: #1A1A1A;
   --primary: #00E324;
   --primary-dark: #00B81E;
+  --primary-tint: rgba(0, 227, 36, 0.08);
+  --primary-glow: 0 0 30px rgba(0, 227, 36, 0.25);
+  --muted: #A0A0A0;
+  --font-sans: 'Inter', sans-serif;
+  --font-heading: 'Outfit', sans-serif;
 }
 
 @theme inline {
@@ -14,44 +23,223 @@
   --color-foreground: var(--foreground);
   --color-primary: var(--primary);
   --color-primary-dark: var(--primary-dark);
-  --font-sans: 'Inter', sans-serif;
-  --font-heading: 'Outfit', sans-serif;
+  --font-sans: var(--font-sans);
+  --font-heading: var(--font-heading);
+}
+
+/* ─── Base Reset ────────────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  scroll-behavior: smooth;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
+  min-height: 100vh;
+  overflow-x: hidden;
 }
 
 h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-heading);
 }
 
-/* Custom CSS Animations */
+/* ─── Scrollbar Styling ─────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: #0A0A0A;
+}
+::-webkit-scrollbar-thumb {
+  background: #1A1A1A;
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #00E324;
+}
+
+/* ─── Keyframes ─────────────────────────────────────────────────────── */
+
+/* Aurora background drift */
+@keyframes aurora-drift {
+  0%   { transform: translate(0%, 0%) scale(1); }
+  33%  { transform: translate(3%, -4%) scale(1.04); }
+  66%  { transform: translate(-3%, 3%) scale(0.97); }
+  100% { transform: translate(0%, 0%) scale(1); }
+}
+
+/* Breathing neon glow */
+@keyframes breathing-glow {
+  0%, 100% {
+    text-shadow: 0 0 10px rgba(0,227,36,0.6), 0 0 20px rgba(0,227,36,0.3);
+    filter: brightness(1);
+  }
+  50% {
+    text-shadow: 0 0 20px rgba(0,227,36,0.9), 0 0 40px rgba(0,227,36,0.5);
+    filter: brightness(1.15);
+  }
+}
+
+/* Scanline flicker — subtle CRT effect */
+@keyframes scanline-flicker {
+  0%, 100% { opacity: 0.03; }
+  50%       { opacity: 0.07; }
+}
+
+/* Float gentle */
+@keyframes float {
+  0%   { transform: translateY(0px); }
+  50%  { transform: translateY(-8px); }
+  100% { transform: translateY(0px); }
+}
+
+/* Pulse subtle */
+@keyframes pulse-subtle {
+  0%, 100% { opacity: 0.8; transform: scale(1); }
+  50%       { opacity: 0.4; transform: scale(1.04); }
+}
+
+/* Ping neon dot */
+@keyframes ping-neon {
+  0%   { transform: scale(1);   opacity: 0.8; }
+  80%  { transform: scale(2.2); opacity: 0; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+
+/* Slide up reveal */
+@keyframes slide-up {
+  from { transform: translateY(24px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+/* Marquee for ticker */
+@keyframes marquee {
+  from { transform: translateX(0%); }
+  to   { transform: translateX(-50%); }
+}
+
+/* ─── Utility Classes ───────────────────────────────────────────────── */
+
+/* Aurora layers */
+.aurora-layer {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  pointer-events: none;
+  animation: aurora-drift 18s ease-in-out infinite;
+  will-change: transform;
+}
+
+/* Noise grain overlay */
+.noise-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='1'/%3E%3C/svg%3E");
+  opacity: 0.022;
+  animation: scanline-flicker 8s ease-in-out infinite;
+}
+
+/* Scanline bars */
+.scanlines {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0,0,0,0.04) 2px,
+    rgba(0,0,0,0.04) 4px
+  );
+}
+
+/* Breathing neon glow text */
+.glow-text {
+  animation: breathing-glow 3s ease-in-out infinite;
+}
+
+/* Neon green border glow */
+.glow-border {
+  box-shadow: 0 0 0 1px rgba(0,227,36,0.3), 0 0 20px rgba(0,227,36,0.1);
+}
+
+.glow-border:hover {
+  box-shadow: 0 0 0 1px rgba(0,227,36,0.6), 0 0 30px rgba(0,227,36,0.2);
+}
+
+/* Animate float */
 .animate-float {
   animation: float 6s ease-in-out infinite;
 }
 
-.animate-pulse-subtle {
-  animation: pulse-subtle 4s ease-in-out infinite;
+/* Ping dot */
+.animate-ping-neon {
+  animation: ping-neon 1.5s ease-out infinite;
 }
 
-@keyframes float {
-  0% { transform: translateY(0px); }
-  50% { transform: translateY(-10px); }
-  100% { transform: translateY(0px); }
+/* Slide up entry */
+.animate-slide-up {
+  animation: slide-up 0.5s ease-out both;
 }
 
-@keyframes pulse-subtle {
-  0%, 100% { opacity: 0.8; transform: scale(1); }
-  50% { opacity: 0.4; transform: scale(1.05); }
+/* Marquee ticker */
+.animate-marquee {
+  animation: marquee 30s linear infinite;
 }
 
-/* Floating label styles for the form */
+/* ─── Card Styles ───────────────────────────────────────────────────── */
+.card-glass {
+  background: rgba(17, 17, 17, 0.8);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 16px;
+}
+
+.card-surface {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+}
+
+/* Top-edge neon accent */
+.card-neon-top::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--primary), transparent);
+  opacity: 0.5;
+  transition: opacity 0.3s;
+}
+
+.card-neon-top:hover::before {
+  opacity: 1;
+}
+
+/* ─── Form Styles (Auth pages) ─────────────────────────────────────── */
 .input-floating {
-  @apply block w-full px-4 pt-6 pb-2 text-gray-900 bg-white border border-gray-300 rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent transition-all duration-300 shadow-sm hover:shadow-md;
+  @apply block w-full px-4 pt-6 pb-2 text-white bg-[#111111] border border-[#1A1A1A] rounded-lg appearance-none focus:outline-none focus:ring-1 focus:ring-[#00E324] focus:border-[#00E324] transition-all duration-300;
 }
+
 .label-floating {
-  @apply absolute text-sm text-gray-500 duration-300 transform -translate-y-3 scale-75 top-4 z-10 origin-[0] left-4 peer-placeholder-shown:scale-100 peer-placeholder-shown:translate-y-0 peer-focus:scale-75 peer-focus:-translate-y-3 peer-focus:text-[var(--primary-dark)];
+  @apply absolute text-sm text-[#A0A0A0] duration-300 transform -translate-y-3 scale-75 top-4 z-10 origin-[0] left-4 peer-placeholder-shown:scale-100 peer-placeholder-shown:translate-y-0 peer-focus:scale-75 peer-focus:-translate-y-3 peer-focus:text-[#00E324];
+}
+
+/* ─── Selection Color ───────────────────────────────────────────────── */
+::selection {
+  background: rgba(0, 227, 36, 0.3);
+  color: #fff;
 }
