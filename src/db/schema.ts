@@ -7,11 +7,13 @@ import {
   pgEnum,
   unique,
   jsonb,
+  integer,
 } from "drizzle-orm/pg-core";
 
 export const roleEnum = pgEnum("role", ["admin", "teacher", "parent", "student"]);
 export const priorityEnum = pgEnum("priority", ["standard", "emergency"]);
 export const notificationTypeEnum = pgEnum("type", ["announcement", "message", "emergency"]);
+export const jobStatusEnum = pgEnum("job_status", ["pending", "running", "success", "failed"]);
 
 const timestamps = {
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -115,5 +117,19 @@ export const notifications = pgTable("notifications", {
   type: notificationTypeEnum("type").notNull(),
   isRead: boolean("is_read").default(false),
   meta: jsonb("meta"),
+  ...timestamps,
+});
+
+export const automationJobs = pgTable("automation_jobs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  schoolId: uuid("school_id").notNull().references(() => schools.id, { onDelete: "cascade" }),
+  jobType: text("job_type").notNull(),
+  payload: jsonb("payload").notNull().$type<Record<string, unknown>>(),
+  status: jobStatusEnum("status").default("pending").notNull(),
+  attempts: integer("attempts").default(0).notNull(),
+  maxAttempts: integer("max_attempts").default(3).notNull(),
+  lastAttemptedAt: timestamp("last_attempted_at"),
+  completedAt: timestamp("completed_at"),
+  errorMessage: text("error_message"),
   ...timestamps,
 });
