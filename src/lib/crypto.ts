@@ -1,6 +1,5 @@
 // src/lib/crypto.ts
 // Ed25519 digital signature utilities using Node.js native crypto (no third-party libs)
-// Used for signing and verifying communication tokens / challenge-response auth flows.
 
 import { generateKeyPairSync, sign, verify, createPublicKey, createPrivateKey } from "crypto";
 
@@ -76,9 +75,51 @@ export function verifySignature(
     const dataBuffer = Buffer.from(data, "utf8");
     const signatureBuffer = Buffer.from(signatureBase64, "base64");
 
+    if (signatureBuffer.length !== 64) {
+      return false;
+    }
+
     return verify(null, dataBuffer, publicKey, signatureBuffer);
   } catch {
     // Any key parsing or verification error means invalid signature
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Announcement-specific signing & verification
+// Canonical payload: title + "|" + body + "|" + timestamp
+// ---------------------------------------------------------------------------
+
+function buildAnnouncementPayload(title: string, body: string, timestamp: string): string {
+  return `${title}|${body}|${timestamp}`;
+}
+
+/**
+ * Signs an announcement using the school's private key from environment.
+ * Returns the base64 signature string.
+ */
+export function signAnnouncement(title: string, body: string, timestamp: string): string {
+  const privateKeyBase64 = getSchoolPrivateKey();
+  const payload = buildAnnouncementPayload(title, body, timestamp);
+  return signPayload(payload, privateKeyBase64);
+}
+
+/**
+ * Verifies an announcement signature server-side.
+ * Returns true if valid, false if tampered or invalid. Never throws.
+ */
+export function verifyAnnouncement(
+  title: string,
+  body: string,
+  timestamp: string,
+  signature: string,
+  publicKey: string
+): boolean {
+  try {
+    const payload = buildAnnouncementPayload(title, body, timestamp);
+    return verifySignature(payload, signature, publicKey);
+  } catch {
     return false;
   }
 }

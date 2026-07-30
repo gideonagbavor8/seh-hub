@@ -1,3 +1,7 @@
+// src/app/api/announcements/recent/route.ts
+// Returns the 5 most recent announcements for the overview feed
+// Lightweight — minimal fields for the activity widget
+
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/db";
@@ -18,7 +22,7 @@ export async function GET() {
     // Set RLS variables before querying database
     await setDbSession(db, userId, schoolId);
 
-    // Fetch the 5 most recent announcements
+    // Fetch the 5 most recent announcements (RLS filters by role)
     const recentAnnouncements = await db
       .select({
         id: announcements.id,
