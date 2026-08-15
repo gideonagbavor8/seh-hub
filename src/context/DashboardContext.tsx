@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { UserRole } from "@/types";
+import { applySchoolAccent, getCurrentTheme, THEME_EVENT } from "@/lib/theme";
 
 export interface DashboardUser {
   id: string;
@@ -60,7 +61,7 @@ export function DashboardProvider({
             name: json.data.name,
             slug: json.data.slug,
             logo_url: json.data.logo_url,
-            primary_color: json.data.primary_color || "#00E324",
+            primary_color: json.data.primary_color || "",
             secondary_color: json.data.secondary_color || "#000000",
           });
         }
@@ -74,20 +75,37 @@ export function DashboardProvider({
     fetchSchoolInfo();
   }, []);
 
-  // Fetch / update unread count every 60 seconds
+  // Paint the school's saved accent colour onto the design system.
+  // Overriding --primary is enough: hover, soft and ring shades derive from it
+  // in CSS. Re-runs on theme change so the contrast correction is recomputed
+  // against whichever surface is actually behind the text.
   useEffect(() => {
-    // For now, let's simulate unread notifications count or fetch it if an API existed
-    // Since notifications count is requested to refresh every 60s, let's fetch or generate a count.
-    function updateUnreadCount() {
-      // Simulate random notification update for demo, or set static default
-      setUnreadCount((prev) => {
-        const next = Math.floor(Math.random() * 5) + 1; // 1 to 5
-        return next;
-      });
+    const accent = school?.primary_color;
+    if (!accent) return;
+
+    applySchoolAccent(accent, getCurrentTheme());
+
+    const onThemeChange = () => applySchoolAccent(accent, getCurrentTheme());
+    window.addEventListener(THEME_EVENT, onThemeChange);
+    return () => window.removeEventListener(THEME_EVENT, onThemeChange);
+  }, [school?.primary_color]);
+
+  // Fetch / update unread message count every 60 seconds
+  useEffect(() => {
+    async function refreshUnread() {
+      try {
+        const res = await fetch("/api/messages?count=true");
+        const json = await res.json();
+        if (json.success) {
+          setUnreadCount(json.data.totalUnread ?? 0);
+        }
+      } catch (err) {
+        console.error("Failed to fetch unread count:", err);
+      }
     }
 
-    updateUnreadCount();
-    const interval = setInterval(updateUnreadCount, 60000);
+    refreshUnread();
+    const interval = setInterval(refreshUnread, 60000);
 
     return () => clearInterval(interval);
   }, []);

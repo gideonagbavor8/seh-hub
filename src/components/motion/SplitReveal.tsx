@@ -1,11 +1,11 @@
 "use client";
 
 import React, { useRef } from "react";
-import { motion, useInView } from "framer-motion";
+import { motion, useInView, useReducedMotion } from "framer-motion";
 
 interface SplitRevealProps {
   children: React.ReactNode;
-  /** Stagger delay between lines */
+  /** Retained for API compatibility; only meaningful on SplitRevealGroup. */
   stagger?: number;
   /** Entry delay */
   delay?: number;
@@ -14,31 +14,31 @@ interface SplitRevealProps {
 }
 
 /**
- * SplitReveal — wraps children with a clipping mask and slides them into view.
- * Ideal for hero headings and section titles.
+ * SplitReveal — lifts a heading into view.
+ *
+ * Note: no overflow-hidden mask. The old masked slide cropped the descenders
+ * on the serif display face, so this eases position and opacity instead.
  */
 export function SplitReveal({
   children,
-  stagger = 0.08,
   delay = 0,
   className,
   direction = "up",
 }: SplitRevealProps) {
   const ref = useRef<HTMLDivElement>(null);
-  const isInView = useInView(ref, { once: true, margin: "-50px" });
+  const isInView = useInView(ref, { once: true, margin: "-40px" });
+  const reduceMotion = useReducedMotion();
 
-  const yOffset = direction === "up" ? "110%" : "-110%";
+  const yOffset = reduceMotion ? 0 : direction === "up" ? 12 : -12;
+  const hidden = { y: yOffset, opacity: 0 };
+  const shown = { y: 0, opacity: 1 };
 
   return (
-    <div ref={ref} className={`overflow-hidden ${className ?? ""}`}>
+    <div ref={ref} className={className}>
       <motion.div
-        initial={{ y: yOffset, opacity: 0 }}
-        animate={isInView ? { y: 0, opacity: 1 } : { y: yOffset, opacity: 0 }}
-        transition={{
-          duration: 0.7,
-          delay,
-          ease: [0.33, 1, 0.68, 1],
-        }}
+        initial={hidden}
+        animate={isInView ? shown : hidden}
+        transition={{ duration: 0.4, delay, ease: [0.22, 1, 0.36, 1] }}
       >
         {children}
       </motion.div>
@@ -56,31 +56,35 @@ interface SplitRevealGroupProps {
 }
 
 /**
- * SplitRevealGroup — renders a group of items, each with staggered SplitReveal.
+ * SplitRevealGroup — renders items with a light stagger.
  */
 export function SplitRevealGroup({
   items,
-  stagger = 0.08,
+  stagger = 0.06,
   delay = 0,
   className,
   itemClassName,
   direction = "up",
 }: SplitRevealGroupProps) {
   const ref = useRef<HTMLDivElement>(null);
-  const isInView = useInView(ref, { once: true, margin: "-50px" });
-  const yOffset = direction === "up" ? "110%" : "-110%";
+  const isInView = useInView(ref, { once: true, margin: "-40px" });
+  const reduceMotion = useReducedMotion();
+
+  const yOffset = reduceMotion ? 0 : direction === "up" ? 12 : -12;
+  const hidden = { y: yOffset, opacity: 0 };
+  const shown = { y: 0, opacity: 1 };
 
   return (
     <div ref={ref} className={className}>
       {items.map((item, i) => (
-        <div key={i} className={`overflow-hidden ${itemClassName ?? ""}`}>
+        <div key={i} className={itemClassName}>
           <motion.div
-            initial={{ y: yOffset, opacity: 0 }}
-            animate={isInView ? { y: 0, opacity: 1 } : { y: yOffset, opacity: 0 }}
+            initial={hidden}
+            animate={isInView ? shown : hidden}
             transition={{
-              duration: 0.7,
+              duration: 0.4,
               delay: delay + i * stagger,
-              ease: [0.33, 1, 0.68, 1],
+              ease: [0.22, 1, 0.36, 1],
             }}
           >
             {item}

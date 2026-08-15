@@ -2,9 +2,9 @@
 
 import React from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { signOut } from "next-auth/react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import {
   LayoutDashboard,
   Megaphone,
@@ -19,7 +19,7 @@ import {
   Calendar,
   LogOut,
   X,
-  Zap,
+  GraduationCap as BrandMark,
 } from "lucide-react";
 import { useDashboard } from "@/context/DashboardContext";
 
@@ -31,9 +31,9 @@ const NAV_BY_ROLE: Record<string, { label: string; href: string; icon: React.Ele
   admin: [
     { label: "Overview",      href: "/dashboard/overview",      icon: LayoutDashboard },
     { label: "Announcements", href: "/dashboard/announcements", icon: Megaphone },
-    { label: "Users",         href: "/dashboard/users",         icon: Users },
-    { label: "Onboarding",    href: "/dashboard/onboarding",    icon: FileUp },
-    { label: "Settings",      href: "/dashboard/settings",      icon: Settings },
+    { label: "Users",         href: "/dashboard/onboarding?tab=Users",           icon: Users },
+    { label: "Onboarding",    href: "/dashboard/onboarding?tab=Upload",          icon: FileUp },
+    { label: "Settings",      href: "/dashboard/onboarding?tab=School Settings", icon: Settings },
   ],
   teacher: [
     { label: "Overview",      href: "/dashboard/overview",      icon: LayoutDashboard },
@@ -55,18 +55,10 @@ const NAV_BY_ROLE: Record<string, { label: string; href: string; icon: React.Ele
   ],
 };
 
-const sidebarVariants = {
-  hidden: {},
-  show: { transition: { staggerChildren: 0.06, delayChildren: 0.1 } },
-};
-
-const navItemVariants = {
-  hidden: { x: -20, opacity: 0 },
-  show:   { x: 0,   opacity: 1, transition: { type: "spring" as const, stiffness: 200, damping: 24 } },
-};
-
 export default function Sidebar({ isMobileDrawer = false }: SidebarProps) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const currentTab = searchParams.get("tab");
   const { user, school, setIsMobileSidebarOpen } = useDashboard();
 
   const navLinks = NAV_BY_ROLE[user.role] ?? [];
@@ -74,132 +66,111 @@ export default function Sidebar({ isMobileDrawer = false }: SidebarProps) {
   const roleLabel = user.role.charAt(0).toUpperCase() + user.role.slice(1);
 
   const content = (
-    <div className="flex h-full w-full flex-col bg-[#0A0A0A]/95 border-r border-[#1A1A1A] backdrop-blur-xl text-white relative overflow-hidden">
-      {/* Sidebar inner glow */}
-      <div
-        className="pointer-events-none absolute inset-0"
-        style={{
-          background: "linear-gradient(135deg, rgba(0,227,36,0.03) 0%, transparent 60%)",
-        }}
-      />
-
-      {/* ── Logo & School ── */}
-      <div className="relative flex h-16 items-center justify-between px-5 border-b border-[#1A1A1A] flex-shrink-0">
-        <div className="flex items-center gap-2.5">
-          {/* Logo mark */}
-          <div className="relative flex h-8 w-8 items-center justify-center rounded-lg bg-[#00E324] shadow-[0_0_16px_rgba(0,227,36,0.5)]">
-            <Zap className="h-4 w-4 text-black fill-black" />
-          </div>
-          <div className="flex flex-col leading-none">
-            <span className="text-[15px] font-bold font-heading tracking-wide text-white">
-              SEH <span className="text-[#00E324]">Hub</span>
+    <div className="flex h-full w-full flex-col bg-surface border-r border-line">
+      {/* ── Brand & School ── */}
+      <div className="flex h-20 items-center justify-between gap-3 px-5 border-b border-line flex-shrink-0">
+        <Link href="/dashboard" className="flex items-center gap-3 min-w-0">
+          <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-primary text-on-primary">
+            <BrandMark className="h-5 w-5" />
+          </span>
+          <span className="flex flex-col min-w-0 leading-tight">
+            <span className="font-heading text-[17px] font-semibold text-ink truncate">
+              SEH Hub
             </span>
-            <span className="text-[10px] text-[#A0A0A0] font-sans tracking-wider truncate max-w-[150px] mt-0.5">
+            <span className="text-[11px] text-ink-muted truncate">
               {school?.name ?? "Loading…"}
             </span>
-          </div>
-        </div>
+          </span>
+        </Link>
 
         {isMobileDrawer && (
           <button
             onClick={() => setIsMobileSidebarOpen(false)}
-            className="p-1.5 rounded-lg text-[#A0A0A0] hover:text-white hover:bg-[#111111] transition-colors focus:outline-none"
-            aria-label="Close sidebar"
+            className="p-2 -mr-1 rounded-lg text-ink-muted hover:text-ink hover:bg-surface-2 transition-colors"
+            aria-label="Close navigation"
           >
-            <X className="h-4 w-4" />
+            <X className="h-5 w-5" />
           </button>
         )}
       </div>
 
       {/* ── Navigation ── */}
       <nav className="flex-1 overflow-y-auto px-3 py-5">
-        <p className="px-3 mb-3 text-[10px] font-semibold uppercase tracking-widest text-[#A0A0A0]/50 font-heading">
-          Navigation
+        <p className="px-3 mb-2 text-[11px] font-semibold uppercase tracking-wider text-ink-muted">
+          Menu
         </p>
-        <motion.ul
-          variants={sidebarVariants}
-          initial="hidden"
-          animate="show"
-          className="space-y-1"
-        >
+        <ul className="space-y-0.5">
           {navLinks.map((link) => {
-            const isActive = pathname === link.href || pathname.startsWith(link.href + "/");
+            const [hrefPath, hrefQuery] = link.href.split("?");
+            const params = new URLSearchParams(hrefQuery || "");
+            const hrefTab = params.get("tab");
+
+            let isActive = false;
+            if (hrefTab) {
+              isActive = pathname === hrefPath && currentTab === hrefTab;
+            } else if (hrefPath === "/dashboard/onboarding") {
+              isActive = pathname === hrefPath && (!currentTab || currentTab === "Upload");
+            } else {
+              isActive = pathname === hrefPath || pathname.startsWith(hrefPath + "/");
+            }
             const Icon = link.icon;
 
             return (
-              <motion.li key={link.href} variants={navItemVariants}>
+              <li key={link.href}>
                 <Link
                   href={link.href}
                   onClick={() => isMobileDrawer && setIsMobileSidebarOpen(false)}
-                  className={`group relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium font-heading transition-all duration-200 ${
+                  aria-current={isActive ? "page" : undefined}
+                  className={`group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-[14px] font-medium transition-colors duration-150 ${
                     isActive
-                      ? "text-black bg-[#00E324]"
-                      : "text-[#A0A0A0] hover:text-white hover:bg-[#111111]"
+                      ? "bg-primary-soft text-primary"
+                      : "text-ink-soft hover:bg-surface-2 hover:text-ink"
                   }`}
                 >
-                  {/* Active glow pill */}
                   {isActive && (
-                    <motion.div
-                      layoutId="sidebar-active-pill"
-                      className="absolute inset-0 rounded-xl bg-[#00E324]"
-                      style={{ zIndex: -1 }}
-                      transition={{ type: "spring" as const, stiffness: 350, damping: 30 }}
+                    <motion.span
+                      layoutId="sidebar-active"
+                      className="absolute left-0 top-1.5 bottom-1.5 w-1 rounded-full bg-primary"
+                      transition={{ type: "spring" as const, stiffness: 400, damping: 34 }}
                     />
                   )}
-
-                  <Icon
-                    className={`h-[18px] w-[18px] flex-shrink-0 transition-transform duration-200 group-hover:scale-110 ${
-                      isActive ? "text-black" : ""
-                    }`}
-                  />
+                  <Icon className="h-[18px] w-[18px] flex-shrink-0" />
                   <span className="truncate">{link.label}</span>
-
-                  {/* Hover right indicator */}
-                  {!isActive && (
-                    <span className="absolute right-2 h-1.5 w-1.5 rounded-full bg-[#00E324] opacity-0 group-hover:opacity-60 transition-opacity duration-300" />
-                  )}
                 </Link>
-              </motion.li>
+              </li>
             );
           })}
-        </motion.ul>
+        </ul>
       </nav>
 
-      {/* ── User Profile & Sign Out ── */}
-      <div className="flex-shrink-0 p-3 border-t border-[#1A1A1A]">
-        {/* User info card */}
-        <div className="flex items-center gap-3 p-3 rounded-xl bg-[#111111] border border-[#1A1A1A] mb-2">
-          {/* Avatar */}
-          <div className="relative h-9 w-9 flex-shrink-0 rounded-full overflow-hidden bg-[#1A1A1A] ring-2 ring-[#00E324]/30">
+      {/* ── User & Sign Out ── */}
+      <div className="flex-shrink-0 border-t border-line p-3">
+        <div className="flex items-center gap-3 rounded-xl bg-surface-2 px-3 py-2.5 mb-2">
+          <div className="relative h-9 w-9 flex-shrink-0 rounded-full overflow-hidden bg-primary-soft ring-1 ring-line">
             {user.avatar_url ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={user.avatar_url} alt={user.full_name} className="h-full w-full object-cover" />
+              <img src={user.avatar_url} alt="" className="h-full w-full object-cover" />
             ) : (
-              <div className="flex h-full w-full items-center justify-center text-xs font-bold text-[#00E324] font-heading">
+              <span className="flex h-full w-full items-center justify-center font-heading text-xs font-semibold text-primary">
                 {initials}
-              </div>
+              </span>
             )}
-            {/* Online dot */}
-            <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-[#00E324] border-2 border-[#0A0A0A] shadow-[0_0_6px_#00E324]" />
           </div>
 
           <div className="flex-1 min-w-0">
-            <p className="text-[13px] font-semibold truncate text-white leading-tight font-heading">
+            <p className="truncate text-[13px] font-semibold text-ink leading-tight">
               {user.full_name}
             </p>
-            <p className="text-[11px] text-[#00E324] font-medium mt-0.5 font-sans">
-              {roleLabel}
-            </p>
+            <p className="text-[11px] text-ink-muted mt-0.5">{roleLabel}</p>
           </div>
         </div>
 
-        {/* Sign out */}
         <button
           onClick={() => signOut({ callbackUrl: "/login" })}
-          className="group flex w-full items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-sm font-semibold text-[#A0A0A0] hover:text-red-400 hover:bg-red-950/20 border border-[#1A1A1A] hover:border-red-900/30 transition-all duration-300 font-heading"
+          className="flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-ink-soft hover:bg-danger-soft hover:text-danger transition-colors duration-150"
         >
-          <LogOut className="h-4 w-4 transition-transform duration-300 group-hover:-translate-x-0.5" />
-          <span>Sign Out</span>
+          <LogOut className="h-4 w-4" />
+          <span>Sign out</span>
         </button>
       </div>
     </div>
@@ -208,10 +179,7 @@ export default function Sidebar({ isMobileDrawer = false }: SidebarProps) {
   if (isMobileDrawer) return content;
 
   return (
-    <aside
-      className="hidden lg:flex lg:flex-col lg:w-64 lg:h-screen lg:fixed lg:top-0 lg:left-0 z-30"
-      style={{ boxShadow: "1px 0 30px rgba(0,227,36,0.06)" }}
-    >
+    <aside className="hidden lg:flex lg:flex-col lg:w-72 lg:h-screen lg:fixed lg:top-0 lg:left-0 z-30">
       {content}
     </aside>
   );

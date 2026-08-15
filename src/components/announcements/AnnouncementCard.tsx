@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { motion } from "framer-motion";
-import { MessageSquare, Zap } from "lucide-react";
+import { MessageSquare, AlertTriangle, ChevronDown } from "lucide-react";
 import { ClipReveal } from "@/components/motion/ClipReveal";
 import CryptoBadge, { UnverifiedOverlay } from "./CryptoBadge";
 
@@ -46,78 +46,48 @@ export default function AnnouncementCard({
     .slice(0, 2)
     .toUpperCase();
 
-  // Determine if we need to show the unverified overlay
-  // Only admin posts should be signed. Teacher posts without signature are fine.
-  const showUnverifiedOverlay =
-    ann.authorRole === "admin" && ann.signature === null;
+  // Only admin posts are expected to carry a signature. A teacher post without
+  // one is normal; an admin post without one is not, and gets flagged.
+  const showUnverifiedOverlay = ann.authorRole === "admin" && ann.signature === null;
 
-  const handleClick = () => {
+  const toggleExpanded = () => {
     if (showUnverifiedOverlay) return;
-    setExpanded(!expanded);
+    setExpanded((prev) => !prev);
     if (!expanded && onExpand) onExpand(ann.id);
   };
 
   return (
-    <ClipReveal from="left" delay={0.06 * index} className="w-full">
+    <ClipReveal from="bottom" delay={0.05 * index} className="w-full">
       <motion.article
         layout
-        onClick={handleClick}
-        whileHover={
-          showUnverifiedOverlay
-            ? undefined
-            : { y: -2, borderColor: "rgba(0,227,36,0.38)" }
-        }
-        transition={{ duration: 0.2 }}
-        className={`relative overflow-hidden rounded-2xl bg-[#111111] border cursor-pointer transition-shadow duration-300 ${
-          isEmergency
-            ? "border-red-500/30"
-            : "border-[rgba(255,255,255,0.03)]"
-        } ${showUnverifiedOverlay ? "border-dashed border-red-500/50" : ""}`}
+        className={`card relative overflow-hidden ${
+          isEmergency ? "border-danger/40" : ""
+        } ${showUnverifiedOverlay ? "border-dashed border-danger/60" : ""}`}
         style={{
-          borderLeft: isEmergency
-            ? "3px solid #FF4444"
-            : "3px solid #00E324",
-          boxShadow: isEmergency
-            ? "0 4px 40px rgba(255,68,68,0.08)"
-            : "0 4px 40px rgba(0,0,0,0.4)",
+          borderLeftWidth: "3px",
+          borderLeftStyle: "solid",
+          borderLeftColor: isEmergency ? "var(--danger)" : "var(--primary)",
         }}
       >
-        {/* Emergency corner glow */}
-        {isEmergency && (
-          <div
-            className="pointer-events-none absolute top-0 left-0 w-32 h-32"
-            style={{
-              background:
-                "radial-gradient(ellipse at 0% 0%, rgba(255,68,68,0.08) 0%, transparent 70%)",
-            }}
-          />
-        )}
-
-        {/* Unverified overlay */}
         {showUnverifiedOverlay && <UnverifiedOverlay />}
 
-        <div
-          className={`p-5 ${
-            showUnverifiedOverlay ? "pointer-events-none opacity-40" : ""
-          }`}
-        >
-          {/* Top: author + meta */}
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-3 min-w-0">
-              {/* Avatar */}
+        <div className={`p-5 ${showUnverifiedOverlay ? "pointer-events-none opacity-40" : ""}`}>
+          {/* ── Author & meta ── */}
+          <div className="mb-3 flex items-start justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
               <div
-                className={`flex-shrink-0 h-9 w-9 rounded-full flex items-center justify-center text-xs font-bold font-heading ${
+                className={`flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-full font-heading text-xs font-semibold ${
                   isEmergency
-                    ? "bg-red-950 text-red-400 ring-1 ring-red-500/30"
-                    : "bg-[#1A1A1A] text-[#00E324] ring-1 ring-[#00E324]/20"
+                    ? "bg-danger-soft text-danger"
+                    : "bg-primary-soft text-primary"
                 }`}
               >
                 {ann.authorAvatar ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={ann.authorAvatar}
-                    alt={ann.authorName}
-                    className="h-full w-full rounded-full object-cover"
+                    alt=""
+                    className="h-full w-full object-cover"
                   />
                 ) : (
                   initials
@@ -125,77 +95,78 @@ export default function AnnouncementCard({
               </div>
 
               <div className="min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-[13px] font-semibold text-white font-heading truncate">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="truncate text-sm font-semibold text-ink">
                     {ann.authorName}
                   </span>
-                  <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-[#1A1A1A] text-[#A0A0A0] uppercase tracking-wider font-heading border border-[#2A2A2A]">
-                    {ann.authorRole}
-                  </span>
+                  <span className="badge-neutral capitalize">{ann.authorRole}</span>
                 </div>
-                <div className="flex items-center gap-1.5 mt-0.5">
-                  <span className="text-[11px] text-[#00E324]/70 font-sans font-medium">
-                    {ann.cohortName}
-                  </span>
-                  <span className="text-[#A0A0A0]/40">·</span>
-                  <span className="text-[11px] text-[#A0A0A0]/60 font-sans">
-                    {new Date(ann.createdAt).toLocaleDateString(undefined, {
-                      month: "short",
+                <p className="mt-0.5 text-xs text-ink-muted">
+                  <span className="font-medium text-primary">{ann.cohortName}</span>
+                  {" · "}
+                  <time dateTime={ann.createdAt}>
+                    {new Date(ann.createdAt).toLocaleDateString("en-GB", {
                       day: "numeric",
+                      month: "short",
                       hour: "2-digit",
                       minute: "2-digit",
                     })}
-                  </span>
-                </div>
+                  </time>
+                </p>
               </div>
             </div>
 
-            {/* Emergency pill */}
             {isEmergency && (
-              <motion.span
-                animate={{ scale: [1, 1.05, 1] }}
-                transition={{ duration: 1.5, repeat: Infinity }}
-                className="flex-shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold bg-[#FF4444] text-white uppercase tracking-wider font-heading shadow-[0_0_12px_rgba(255,68,68,0.4)]"
-              >
-                <Zap className="h-3 w-3 fill-white" />
+              <span className="badge inline-flex flex-shrink-0 bg-danger text-white">
+                <AlertTriangle className="h-3 w-3" />
                 Emergency
-              </motion.span>
+              </span>
             )}
           </div>
 
-          {/* Title */}
-          <h3 className="text-[16px] sm:text-[18px] font-bold font-heading text-white leading-snug mb-2">
+          {/* ── Content ── */}
+          <h3 className="mb-2 font-heading text-[19px] font-semibold leading-snug text-ink">
             {ann.title}
           </h3>
 
-          {/* Body */}
           <p
-            className={`text-[13px] sm:text-[14px] text-[#C0C0C0] font-sans leading-relaxed ${
+            id={`announcement-body-${ann.id}`}
+            className={`whitespace-pre-line text-[15px] leading-relaxed text-ink-soft ${
               expanded ? "" : "line-clamp-3"
             }`}
           >
             {ann.body}
           </p>
 
-          {/* Media */}
-          {ann.mediaUrl && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.97 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.2, duration: 0.4 }}
-              className="mt-3 rounded-xl overflow-hidden border border-[#1A1A1A]"
+          {!showUnverifiedOverlay && ann.body.length > 180 && (
+            <button
+              onClick={toggleExpanded}
+              aria-expanded={expanded}
+              aria-controls={`announcement-body-${ann.id}`}
+              className="mt-2 inline-flex items-center gap-1 text-sm font-semibold text-primary hover:underline"
             >
+              {expanded ? "Show less" : "Read more"}
+              <ChevronDown
+                className={`h-3.5 w-3.5 transition-transform duration-200 ${
+                  expanded ? "rotate-180" : ""
+                }`}
+              />
+            </button>
+          )}
+
+          {ann.mediaUrl && (
+            <div className="mt-3 overflow-hidden rounded-xl border border-line">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={ann.mediaUrl}
-                alt="Announcement media"
-                className="w-full max-h-64 object-cover"
+                alt=""
+                className="max-h-72 w-full object-cover"
               />
-            </motion.div>
+            </div>
           )}
 
-          {/* Bottom: CryptoBadge + actions */}
-          <div className="flex items-center justify-between mt-4 pt-3 border-t border-[#1A1A1A]">
+          {/* ── Footer ── */}
+          <div className="mt-4 flex items-center justify-between gap-3 border-t border-line pt-3">
             <CryptoBadge
               signature={ann.signature}
               title={ann.title}
@@ -205,21 +176,18 @@ export default function AnnouncementCard({
               authorRole={ann.authorRole}
             />
 
-            <div className="flex items-center gap-3">
-              {/* Reply button — parent only */}
-              {userRole === "parent" && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    // TODO: Open reply modal
-                  }}
-                  className="flex items-center gap-1 text-[11px] font-semibold text-[#A0A0A0] hover:text-[#00E324] transition-colors font-heading"
-                >
-                  <MessageSquare className="h-3.5 w-3.5" />
-                  Reply
-                </button>
-              )}
-            </div>
+            {userRole === "parent" && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  // TODO: Open reply modal
+                }}
+                className="inline-flex items-center gap-1.5 text-sm font-semibold text-ink-soft transition-colors hover:text-primary"
+              >
+                <MessageSquare className="h-4 w-4" />
+                Reply
+              </button>
+            )}
           </div>
         </div>
       </motion.article>

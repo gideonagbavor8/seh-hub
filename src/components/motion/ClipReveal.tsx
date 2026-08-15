@@ -1,61 +1,53 @@
 "use client";
 
 import React, { useRef } from "react";
-import { motion, useInView } from "framer-motion";
+import { motion, useInView, useReducedMotion } from "framer-motion";
 
 interface ClipRevealProps {
   children: React.ReactNode;
-  /** Direction of the reveal clip */
+  /** Direction the element eases in from */
   from?: "left" | "right" | "top" | "bottom";
   delay?: number;
   duration?: number;
   className?: string;
 }
 
-const clipMap = {
-  left: {
-    initial: "inset(0 100% 0 0)",
-    animate: "inset(0 0% 0 0)",
-  },
-  right: {
-    initial: "inset(0 0 0 100%)",
-    animate: "inset(0 0 0 0%)",
-  },
-  top: {
-    initial: "inset(100% 0 0 0)",
-    animate: "inset(0% 0 0 0)",
-  },
-  bottom: {
-    initial: "inset(0 0 100% 0)",
-    animate: "inset(0 0 0% 0)",
-  },
+/** Small directional offsets — a hint of movement, not a wipe. */
+const offsetMap = {
+  left: { x: -12, y: 0 },
+  right: { x: 12, y: 0 },
+  top: { x: 0, y: -12 },
+  bottom: { x: 0, y: 12 },
 };
 
 /**
- * ClipReveal — wipes an element into view using clip-path animation.
- * Great for cards, images, and UI panels.
+ * ClipReveal — eases an element into view on scroll.
+ *
+ * Previously a clip-path wipe. Now a short fade-and-drift: clipping cropped
+ * descenders and box shadows, and the long wipe read as decorative on a
+ * content-dense dashboard. The prop shape is unchanged so call sites still work.
  */
 export function ClipReveal({
   children,
   from = "left",
   delay = 0,
-  duration = 0.7,
+  duration = 0.35,
   className,
 }: ClipRevealProps) {
   const ref = useRef<HTMLDivElement>(null);
-  const isInView = useInView(ref, { once: true, margin: "-30px" });
-  const { initial, animate } = clipMap[from];
+  const isInView = useInView(ref, { once: true, margin: "-40px" });
+  const reduceMotion = useReducedMotion();
+  const offset = offsetMap[from];
+
+  const hidden = reduceMotion ? { opacity: 0 } : { opacity: 0, ...offset };
+  const shown = { opacity: 1, x: 0, y: 0 };
 
   return (
     <motion.div
       ref={ref}
-      initial={{ clipPath: initial }}
-      animate={isInView ? { clipPath: animate } : { clipPath: initial }}
-      transition={{
-        duration,
-        delay,
-        ease: [0.76, 0, 0.24, 1],
-      }}
+      initial={hidden}
+      animate={isInView ? shown : hidden}
+      transition={{ duration, delay, ease: [0.22, 1, 0.36, 1] }}
       className={className}
     >
       {children}

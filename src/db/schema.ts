@@ -25,7 +25,7 @@ export const schools = pgTable("schools", {
   name: text("name").notNull(),
   slug: text("slug").unique().notNull(),
   logoUrl: text("logo_url"),
-  primaryColor: text("primary_color").default("#00E324"),
+  primaryColor: text("primary_color").default("#1F6F43"),
   secondaryColor: text("secondary_color").default("#000000"),
   contactEmail: text("contact_email"),
   contactPhone: text("contact_phone"),
