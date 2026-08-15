@@ -56,7 +56,6 @@ export async function POST(request: NextRequest) {
 
             if (!apiKey) {
               console.warn(`[JobProcessor] ARKESEL_API_KEY not set — skipping SMS to ${payload.phone}`);
-              // Mark as success since we can't send SMS without the key
               await db
                 .update(automationJobs)
                 .set({
@@ -69,7 +68,6 @@ export async function POST(request: NextRequest) {
               continue;
             }
 
-            // Send SMS via Arkesel HTTP API
             const smsResponse = await fetch("https://sms.arkesel.com/api/v2/sms/send", {
               method: "POST",
               headers: {
@@ -79,6 +77,67 @@ export async function POST(request: NextRequest) {
               body: JSON.stringify({
                 sender: "SEH Hub",
                 message: payload.message,
+                recipients: [payload.phone],
+              }),
+            });
+
+            if (!smsResponse.ok) {
+              throw new Error(`Arkesel API responded with ${smsResponse.status}`);
+            }
+
+            await db
+              .update(automationJobs)
+              .set({ status: "success", completedAt: new Date() })
+              .where(eq(automationJobs.id, job.id));
+            succeeded++;
+            break;
+          }
+
+          case "welcome_sms": {
+            const payload = job.payload as {
+              phone: string;
+              name: string;
+              email: string;
+              school_name: string;
+              school_slug: string;
+              temp_password: string;
+            };
+            const apiKey = process.env.ARKESEL_API_KEY;
+            const message = `Welcome to ${payload.school_name}! Your account is ready. Email: ${payload.email}. Password: ${payload.temp_password}. Login at https://${payload.school_slug}.seh-hub.com/login`;
+
+            if (!payload.phone) {
+              console.warn(`[JobProcessor] Missing phone for welcome SMS payload: ${JSON.stringify(payload)}`);
+              await db
+                .update(automationJobs)
+                .set({ status: "failed", completedAt: new Date(), errorMessage: "Missing phone number" })
+                .where(eq(automationJobs.id, job.id));
+              failed++;
+              break;
+            }
+
+            if (!apiKey) {
+              console.warn(`[JobProcessor] ARKESEL_API_KEY not set — skipping welcome SMS to ${payload.phone}`);
+              await db
+                .update(automationJobs)
+                .set({
+                  status: "success",
+                  completedAt: new Date(),
+                  errorMessage: "ARKESEL_API_KEY not configured — SMS skipped",
+                })
+                .where(eq(automationJobs.id, job.id));
+              succeeded++;
+              break;
+            }
+
+            const smsResponse = await fetch("https://sms.arkesel.com/api/v2/sms/send", {
+              method: "POST",
+              headers: {
+                "api-key": apiKey,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                sender: "SEH Hub",
+                message,
                 recipients: [payload.phone],
               }),
             });
