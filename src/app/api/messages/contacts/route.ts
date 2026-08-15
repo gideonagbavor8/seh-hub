@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { db } from "@/db";
 import {
   users,
   teacherCohorts,
@@ -8,7 +7,7 @@ import {
   parentStudentLinks,
   cohorts,
 } from "@/db/schema";
-import { setDbSession } from "@/lib/db-session";
+import { withTenant } from "@/lib/db-session";
 import { aliasedTable } from "drizzle-orm/alias";
 import { and, eq } from "drizzle-orm";
 
@@ -35,22 +34,22 @@ export async function GET() {
     return NextResponse.json({ success: false, error: "Admins should not use the message contact picker" }, { status: 403 });
   }
 
-  await setDbSession(db, userId, schoolId);
-
   if (role === "parent") {
-    const rows = await db
-      .select({
-        teacherId: teacher.id,
-        teacherName: teacher.fullName,
-        teacherAvatar: teacher.avatarUrl,
-        cohortName: cohorts.name,
-      })
-      .from(parentStudentLinks)
-      .innerJoin(studentCohorts, eq(parentStudentLinks.studentId, studentCohorts.studentId))
-      .innerJoin(teacherCohorts, eq(studentCohorts.cohortId, teacherCohorts.cohortId))
-      .innerJoin(cohorts, eq(studentCohorts.cohortId, cohorts.id))
-      .innerJoin(teacher, eq(teacherCohorts.teacherId, teacher.id))
-      .where(eq(parentStudentLinks.parentId, userId));
+    const rows = await withTenant(session.user, (tx) =>
+      tx
+        .select({
+          teacherId: teacher.id,
+          teacherName: teacher.fullName,
+          teacherAvatar: teacher.avatarUrl,
+          cohortName: cohorts.name,
+        })
+        .from(parentStudentLinks)
+        .innerJoin(studentCohorts, eq(parentStudentLinks.studentId, studentCohorts.studentId))
+        .innerJoin(teacherCohorts, eq(studentCohorts.cohortId, teacherCohorts.cohortId))
+        .innerJoin(cohorts, eq(studentCohorts.cohortId, cohorts.id))
+        .innerJoin(teacher, eq(teacherCohorts.teacherId, teacher.id))
+        .where(eq(parentStudentLinks.parentId, userId))
+    );
 
     const contacts = new Map<string, { id: string; name: string; avatarUrl: string | null; role: string; context: string }>();
     for (const row of rows) {
@@ -68,21 +67,23 @@ export async function GET() {
     return NextResponse.json({ success: true, data: Array.from(contacts.values()) });
   }
 
-  const rows = await db
-    .select({
-      parentId: parent.id,
-      parentName: parent.fullName,
-      parentAvatar: parent.avatarUrl,
-      studentName: student.fullName,
-      cohortName: cohorts.name,
-    })
-    .from(teacherCohorts)
-    .innerJoin(studentCohorts, eq(teacherCohorts.cohortId, studentCohorts.cohortId))
-    .innerJoin(parentStudentLinks, eq(studentCohorts.studentId, parentStudentLinks.studentId))
-    .innerJoin(parent, eq(parentStudentLinks.parentId, parent.id))
-    .innerJoin(student, eq(student.id, studentCohorts.studentId))
-    .innerJoin(cohorts, eq(teacherCohorts.cohortId, cohorts.id))
-    .where(eq(teacherCohorts.teacherId, userId));
+  const rows = await withTenant(session.user, (tx) =>
+    tx
+      .select({
+        parentId: parent.id,
+        parentName: parent.fullName,
+        parentAvatar: parent.avatarUrl,
+        studentName: student.fullName,
+        cohortName: cohorts.name,
+      })
+      .from(teacherCohorts)
+      .innerJoin(studentCohorts, eq(teacherCohorts.cohortId, studentCohorts.cohortId))
+      .innerJoin(parentStudentLinks, eq(studentCohorts.studentId, parentStudentLinks.studentId))
+      .innerJoin(parent, eq(parentStudentLinks.parentId, parent.id))
+      .innerJoin(student, eq(student.id, studentCohorts.studentId))
+      .innerJoin(cohorts, eq(teacherCohorts.cohortId, cohorts.id))
+      .where(eq(teacherCohorts.teacherId, userId))
+  );
 
   const contacts = new Map<string, { id: string; name: string; avatarUrl: string | null; role: string; context: string }>();
   for (const row of rows) {

@@ -13,9 +13,16 @@ import {
 
 dotenv.config({ path: ".env.local" });
 
-if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL environment variable is not set.");
+// The seed writes schools and users directly. Under RLS the restricted app
+// role cannot do that (there is no session user yet), so seeding runs as the
+// owner. Point DATABASE_URL at the owner string only for this process.
+const SEED_URL = process.env.DATABASE_URL_OWNER || process.env.DATABASE_URL;
+
+if (!SEED_URL) {
+  throw new Error("DATABASE_URL_OWNER environment variable is not set.");
 }
+
+process.env.DATABASE_URL = SEED_URL;
 
 let db: DB | null = null;
 

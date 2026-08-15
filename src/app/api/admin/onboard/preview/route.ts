@@ -1,7 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
-import { db } from "@/db";
-import { setDbSession } from "@/lib/db-session";
+import { withTenant } from "@/lib/db-session";
 import { findExistingEmails, parseOnboardingFile, validateOnboardingRows } from "@/lib/admin-onboarding";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +15,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, error: "Admin access required" }, { status: 403 });
   }
 
-  const userId = session.user.id;
   const schoolId = session.user.school_id;
 
   const formData = await request.formData();
@@ -32,8 +30,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: "The file contains no rows to preview." }, { status: 400 });
     }
 
-    await setDbSession(db, userId, schoolId);
-
     const validation = validateOnboardingRows(parsedRows);
     const lowercasedEmails = Array.from(
       new Set<string>([
@@ -42,7 +38,9 @@ export async function POST(request: NextRequest) {
         ...parsedRows.map((row) => row.parent_email.toLowerCase()),
       ])
     );
-    const existingEmails = await findExistingEmails(db, schoolId, lowercasedEmails);
+    const existingEmails = await withTenant(session.user, (tx) =>
+      findExistingEmails(tx, schoolId, lowercasedEmails)
+    );
 
     if (existingEmails.size > 0) {
       validation.existingEmails = Array.from(existingEmails);

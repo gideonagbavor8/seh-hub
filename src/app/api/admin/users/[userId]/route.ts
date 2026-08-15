@@ -1,8 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
-import { db } from "@/db";
 import { users, teacherCohorts, studentCohorts } from "@/db/schema";
-import { setDbSession } from "@/lib/db-session";
+import { withTenant } from "@/lib/db-session";
 import { and, eq } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
@@ -19,7 +18,6 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ u
 
   const { userId } = await context.params;
   const schoolId = session.user.school_id;
-  await setDbSession(db, session.user.id, schoolId);
 
   const body = (await request.json()) as {
     full_name?: string;
@@ -43,10 +41,12 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ u
   }
 
   try {
-    const affected = await db
-      .update(users)
-      .set(updates)
-      .where(and(eq(users.id, userId), eq(users.schoolId, schoolId)));
+    const affected = await withTenant(session.user, (tx) =>
+      tx
+        .update(users)
+        .set(updates)
+        .where(and(eq(users.id, userId), eq(users.schoolId, schoolId)))
+    );
 
     const affectedCount =
       (affected as { rowCount?: number; rowsAffected?: number }).rowCount ??
@@ -76,10 +76,10 @@ export async function DELETE(request: NextRequest, context: { params: Promise<{ 
 
   const { userId } = await context.params;
   const schoolId = session.user.school_id;
-  await setDbSession(db, session.user.id, schoolId);
 
   try {
-    await db.transaction(async (tx) => {
+    // withTenant already opens the transaction, so these run atomically.
+    await withTenant(session.user, async (tx) => {
       await tx.update(users).set({ isActive: false }).where(and(eq(users.id, userId), eq(users.schoolId, schoolId)));
       await tx.delete(teacherCohorts).where(eq(teacherCohorts.teacherId, userId));
       await tx.delete(studentCohorts).where(eq(studentCohorts.studentId, userId));

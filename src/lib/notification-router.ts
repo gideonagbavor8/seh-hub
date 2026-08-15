@@ -4,8 +4,7 @@
 
 import { notifications, automationJobs, users } from "@/db/schema";
 import { eq, inArray } from "drizzle-orm";
-import type { DB } from "@/db";
-import { setDbSession } from "./db-session";
+import type { Tx } from "@/db";
 
 export interface AnnouncementPayload {
   id: string;
@@ -21,18 +20,17 @@ export interface AnnouncementPayload {
  *
  * Standard: in-app notification only.
  * Emergency: in-app notification + SMS job queued per recipient with a phone number.
+ *
+ * Takes the caller's transaction handle: the notification and job inserts must
+ * share the announcement's transaction so RLS sees the author, and so a failure
+ * here rolls the announcement back rather than leaving it un-notified.
  */
 export async function routeAnnouncement(
   announcement: AnnouncementPayload,
   recipientIds: string[],
-  db: DB,
-  sessionUserId: string,
-  sessionSchoolId: string
+  db: Tx
 ): Promise<void> {
   if (recipientIds.length === 0) return;
-
-  // Set RLS session
-  await setDbSession(db, sessionUserId, sessionSchoolId);
 
   // 1. Insert in-app notifications for all recipients
   const notificationRows = recipientIds.map((userId) => ({

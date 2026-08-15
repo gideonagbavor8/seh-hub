@@ -1,6 +1,6 @@
 import { parse } from "papaparse";
 import * as XLSX from "xlsx";
-import { DB } from "@/db";
+import { DB, Tx } from "@/db";
 import { users, cohorts } from "@/db/schema";
 import { and, eq, inArray, sql } from "drizzle-orm";
 
@@ -189,7 +189,7 @@ export function validateOnboardingRows(rows: ParsedOnboardingRow[]): OnboardVali
   };
 }
 
-export async function findExistingEmails(db: DB, schoolId: string, emails: string[]) {
+export async function findExistingEmails(db: DB | Tx, schoolId: string, emails: string[]) {
   const normalized = emails.map((email) => email.toLowerCase());
   const rows = await db
     .select({ email: users.email })

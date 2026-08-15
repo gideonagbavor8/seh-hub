@@ -3,7 +3,6 @@
 
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { db } from "@/db";
 import {
   cohorts,
   teacherCohorts,
@@ -12,7 +11,7 @@ import {
   announcements,
   users,
 } from "@/db/schema";
-import { setDbSession } from "@/lib/db-session";
+import { withTenant } from "@/lib/db-session";
 import { and, eq, gte, inArray, sql } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
@@ -30,10 +29,9 @@ export async function GET() {
   }
 
   try {
-    await setDbSession(db, userId, schoolId);
-
+    return await withTenant(session.user, async (tx) => {
     // 1. Get teacher's cohorts
-    const cohortRows = await db
+    const cohortRows = await tx
       .select({ id: cohorts.id, name: cohorts.name, academicYear: cohorts.academicYear })
       .from(teacherCohorts)
       .innerJoin(cohorts, eq(teacherCohorts.cohortId, cohorts.id))
@@ -47,7 +45,7 @@ export async function GET() {
     const cohortIds = cohortRows.map((r) => r.id);
 
     // 2. Get students per cohort
-    const studentRows = await db
+    const studentRows = await tx
       .select({
         cohortId: studentCohorts.cohortId,
         studentId: studentCohorts.studentId,
@@ -65,7 +63,7 @@ export async function GET() {
     const parentCohortMap: Record<string, Set<string>> = {};
 
     if (studentIds.length > 0) {
-      const parentRows = await db
+      const parentRows = await tx
         .select({ parentId: parentStudentLinks.parentId, studentId: parentStudentLinks.studentId })
         .from(parentStudentLinks)
         .where(inArray(parentStudentLinks.studentId, studentIds));
@@ -85,7 +83,7 @@ export async function GET() {
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-    const annRows = await db
+    const annRows = await tx
       .select({
         cohortId: announcements.cohortId,
         count: sql<number>`COUNT(*)`,
@@ -129,6 +127,7 @@ export async function GET() {
     }));
 
     return NextResponse.json({ success: true, data });
+    });
   } catch (error) {
     console.error("Error fetching teacher classes:", error);
     return NextResponse.json({ success: false, error: "Internal Server Error" }, { status: 500 });
