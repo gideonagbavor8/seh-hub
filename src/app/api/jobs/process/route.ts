@@ -3,9 +3,20 @@
 // Processes pending automation_jobs: emergency_sms via Arkesel, emergency_log
 
 import { NextResponse, type NextRequest } from "next/server";
-import { db } from "@/db";
 import { automationJobs } from "@/db/schema";
+import { withSystemContext } from "@/lib/db-session";
 import { eq, and, lt, sql } from "drizzle-orm";
+
+/**
+ * Every status write is its own short system-context transaction. Crucially,
+ * a transaction is never held open across the Arkesel HTTP calls below —
+ * doing so would pin a pooled connection for the length of a network round trip.
+ */
+function updateJob(id: string, values: Partial<typeof automationJobs.$inferInsert>) {
+  return withSystemContext((tx) =>
+    tx.update(automationJobs).set(values).where(eq(automationJobs.id, id))
+  );
+}
 
 export const dynamic = "force-dynamic";
 
@@ -21,32 +32,33 @@ export async function POST(request: NextRequest) {
   let failed = 0;
 
   try {
-    // Fetch pending jobs (no RLS needed — this is a system-level operation)
-    const pendingJobs = await db
-      .select()
-      .from(automationJobs)
-      .where(
-        and(
-          eq(automationJobs.status, "pending"),
-          lt(automationJobs.attempts, automationJobs.maxAttempts)
+    // This job belongs to no user and no school, so it runs under system
+    // context. Each DB touch gets its own short transaction — a transaction is
+    // never held open across the Arkesel HTTP calls below.
+    const pendingJobs = await withSystemContext((tx) =>
+      tx
+        .select()
+        .from(automationJobs)
+        .where(
+          and(
+            eq(automationJobs.status, "pending"),
+            lt(automationJobs.attempts, automationJobs.maxAttempts)
+          )
         )
-      )
-      .orderBy(automationJobs.createdAt)
-      .limit(10);
+        .orderBy(automationJobs.createdAt)
+        .limit(10)
+    );
 
     for (const job of pendingJobs) {
       processed++;
 
       try {
         // Mark as running
-        await db
-          .update(automationJobs)
-          .set({
+        await updateJob(job.id, {
             status: "running",
             attempts: job.attempts + 1,
             lastAttemptedAt: new Date(),
-          })
-          .where(eq(automationJobs.id, job.id));
+          });
 
         // Execute based on job type
         switch (job.jobType) {
@@ -56,14 +68,11 @@ export async function POST(request: NextRequest) {
 
             if (!apiKey) {
               console.warn(`[JobProcessor] ARKESEL_API_KEY not set — skipping SMS to ${payload.phone}`);
-              await db
-                .update(automationJobs)
-                .set({
+              await updateJob(job.id, {
                   status: "success",
                   completedAt: new Date(),
                   errorMessage: "ARKESEL_API_KEY not configured — SMS skipped",
-                })
-                .where(eq(automationJobs.id, job.id));
+                });
               succeeded++;
               continue;
             }
@@ -85,10 +94,12 @@ export async function POST(request: NextRequest) {
               throw new Error(`Arkesel API responded with ${smsResponse.status}`);
             }
 
-            await db
-              .update(automationJobs)
-              .set({ status: "success", completedAt: new Date() })
-              .where(eq(automationJobs.id, job.id));
+            await withSystemContext((tx) =>
+              tx
+                .update(automationJobs)
+                .set({ status: "success", completedAt: new Date() })
+                .where(eq(automationJobs.id, job.id))
+            );
             succeeded++;
             break;
           }
@@ -107,24 +118,23 @@ export async function POST(request: NextRequest) {
 
             if (!payload.phone) {
               console.warn(`[JobProcessor] Missing phone for welcome SMS payload: ${JSON.stringify(payload)}`);
-              await db
-                .update(automationJobs)
-                .set({ status: "failed", completedAt: new Date(), errorMessage: "Missing phone number" })
-                .where(eq(automationJobs.id, job.id));
+              await withSystemContext((tx) =>
+                tx
+                  .update(automationJobs)
+                  .set({ status: "failed", completedAt: new Date(), errorMessage: "Missing phone number" })
+                  .where(eq(automationJobs.id, job.id))
+              );
               failed++;
               break;
             }
 
             if (!apiKey) {
               console.warn(`[JobProcessor] ARKESEL_API_KEY not set — skipping welcome SMS to ${payload.phone}`);
-              await db
-                .update(automationJobs)
-                .set({
+              await updateJob(job.id, {
                   status: "success",
                   completedAt: new Date(),
                   errorMessage: "ARKESEL_API_KEY not configured — SMS skipped",
-                })
-                .where(eq(automationJobs.id, job.id));
+                });
               succeeded++;
               break;
             }
@@ -146,10 +156,12 @@ export async function POST(request: NextRequest) {
               throw new Error(`Arkesel API responded with ${smsResponse.status}`);
             }
 
-            await db
-              .update(automationJobs)
-              .set({ status: "success", completedAt: new Date() })
-              .where(eq(automationJobs.id, job.id));
+            await withSystemContext((tx) =>
+              tx
+                .update(automationJobs)
+                .set({ status: "success", completedAt: new Date() })
+                .where(eq(automationJobs.id, job.id))
+            );
             succeeded++;
             break;
           }
@@ -158,23 +170,22 @@ export async function POST(request: NextRequest) {
             const payload = job.payload as Record<string, unknown>;
             console.log("[AuditLog] Emergency announcement dispatched:", JSON.stringify(payload));
 
-            await db
-              .update(automationJobs)
-              .set({ status: "success", completedAt: new Date() })
-              .where(eq(automationJobs.id, job.id));
+            await withSystemContext((tx) =>
+              tx
+                .update(automationJobs)
+                .set({ status: "success", completedAt: new Date() })
+                .where(eq(automationJobs.id, job.id))
+            );
             succeeded++;
             break;
           }
 
           default: {
             console.warn(`[JobProcessor] Unknown job type: ${job.jobType}`);
-            await db
-              .update(automationJobs)
-              .set({
+            await updateJob(job.id, {
                 status: "failed",
                 errorMessage: `Unknown job type: ${job.jobType}`,
-              })
-              .where(eq(automationJobs.id, job.id));
+              });
             failed++;
           }
         }
@@ -185,13 +196,10 @@ export async function POST(request: NextRequest) {
         // If attempts < max, reset to pending for retry; otherwise mark failed
         const newStatus = job.attempts + 1 < job.maxAttempts ? "pending" : "failed";
 
-        await db
-          .update(automationJobs)
-          .set({
+        await updateJob(job.id, {
             status: newStatus as "pending" | "failed",
             errorMessage: errMsg,
-          })
-          .where(eq(automationJobs.id, job.id));
+          });
 
         failed++;
       }

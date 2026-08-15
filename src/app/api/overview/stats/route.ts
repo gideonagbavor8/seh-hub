@@ -3,7 +3,6 @@
 
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { db } from "@/db";
 import {
   users,
   announcements,
@@ -12,7 +11,7 @@ import {
   studentCohorts,
   parentStudentLinks,
 } from "@/db/schema";
-import { setDbSession } from "@/lib/db-session";
+import { withTenant } from "@/lib/db-session";
 import { and, eq, gte, inArray, sql } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
@@ -26,20 +25,21 @@ export async function GET() {
   const { id: userId, school_id: schoolId, role } = session.user;
 
   try {
-    await setDbSession(db, userId, schoolId);
-
+    // One transaction for the whole handler; queries inside Promise.all are
+    // queued on the single pooled connection, which is fine for counts.
+    return await withTenant(session.user, async (tx) => {
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
     if (role === "admin") {
       const [[teacherRow], [studentRow], [parentRow], [annRow]] = await Promise.all([
-        db.select({ count: sql<number>`COUNT(*)` }).from(users)
+        tx.select({ count: sql<number>`COUNT(*)` }).from(users)
           .where(and(eq(users.schoolId, schoolId), eq(users.role, "teacher"), eq(users.isActive, true))),
-        db.select({ count: sql<number>`COUNT(*)` }).from(users)
+        tx.select({ count: sql<number>`COUNT(*)` }).from(users)
           .where(and(eq(users.schoolId, schoolId), eq(users.role, "student"), eq(users.isActive, true))),
-        db.select({ count: sql<number>`COUNT(*)` }).from(users)
+        tx.select({ count: sql<number>`COUNT(*)` }).from(users)
           .where(and(eq(users.schoolId, schoolId), eq(users.role, "parent"), eq(users.isActive, true))),
-        db.select({ count: sql<number>`COUNT(*)` }).from(announcements)
+        tx.select({ count: sql<number>`COUNT(*)` }).from(announcements)
           .where(and(eq(announcements.schoolId, schoolId), gte(announcements.createdAt, sevenDaysAgo))),
       ]);
 
@@ -54,7 +54,7 @@ export async function GET() {
     }
 
     if (role === "teacher") {
-      const studentRows = await db
+      const studentRows = await tx
         .select({ studentId: studentCohorts.studentId })
         .from(teacherCohorts)
         .innerJoin(studentCohorts, eq(teacherCohorts.cohortId, studentCohorts.cohortId))
@@ -63,13 +63,13 @@ export async function GET() {
       const uniqueStudents = new Set(studentRows.map((r) => r.studentId)).size;
 
       const [[unreadRow], [annRow]] = await Promise.all([
-        db.select({ count: sql<number>`COUNT(*)` }).from(directMessages)
+        tx.select({ count: sql<number>`COUNT(*)` }).from(directMessages)
           .where(and(
             eq(directMessages.schoolId, schoolId),
             eq(directMessages.receiverId, userId),
             eq(directMessages.isRead, false),
           )),
-        db.select({ count: sql<number>`COUNT(*)` }).from(announcements)
+        tx.select({ count: sql<number>`COUNT(*)` }).from(announcements)
           .where(and(
             eq(announcements.schoolId, schoolId),
             eq(announcements.authorId, userId),
@@ -89,11 +89,11 @@ export async function GET() {
 
     if (role === "parent") {
       const [[childRow], [annRow], [unreadRow]] = await Promise.all([
-        db.select({ count: sql<number>`COUNT(*)` }).from(parentStudentLinks)
+        tx.select({ count: sql<number>`COUNT(*)` }).from(parentStudentLinks)
           .where(eq(parentStudentLinks.parentId, userId)),
-        db.select({ count: sql<number>`COUNT(*)` }).from(announcements)
+        tx.select({ count: sql<number>`COUNT(*)` }).from(announcements)
           .where(and(eq(announcements.schoolId, schoolId), gte(announcements.createdAt, sevenDaysAgo))),
-        db.select({ count: sql<number>`COUNT(*)` }).from(directMessages)
+        tx.select({ count: sql<number>`COUNT(*)` }).from(directMessages)
           .where(and(
             eq(directMessages.schoolId, schoolId),
             eq(directMessages.receiverId, userId),
@@ -112,7 +112,7 @@ export async function GET() {
     }
 
     if (role === "student") {
-      const [annRow] = await db
+      const [annRow] = await tx
         .select({ count: sql<number>`COUNT(*)` })
         .from(announcements)
         .where(and(eq(announcements.schoolId, schoolId), gte(announcements.createdAt, sevenDaysAgo)));
@@ -128,6 +128,7 @@ export async function GET() {
     }
 
     return NextResponse.json({ success: true, data: [] });
+    });
   } catch (error) {
     console.error("Error fetching stats:", error);
     return NextResponse.json({ success: false, error: "Internal Server Error" }, { status: 500 });

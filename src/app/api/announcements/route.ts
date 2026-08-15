@@ -4,7 +4,6 @@
 
 import { NextResponse, type NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
-import { db } from "@/db";
 import {
   announcements,
   users,
@@ -13,7 +12,7 @@ import {
   studentCohorts,
   parentStudentLinks,
 } from "@/db/schema";
-import { setDbSession } from "@/lib/db-session";
+import { withTenant } from "@/lib/db-session";
 import { signAnnouncement, getSchoolPublicKey } from "@/lib/crypto";
 import { routeAnnouncement } from "@/lib/notification-router";
 import { desc, eq, and, inArray, isNull, sql } from "drizzle-orm";
@@ -30,10 +29,9 @@ export async function GET(request: NextRequest) {
   const offset = parseInt(searchParams.get("offset") || "0", 10);
 
   try {
-    await setDbSession(db, userId, schoolId);
-
+    return await withTenant(session.user, async (tx) => {
     // RLS handles role-based visibility, so we just query by school
-    const results = await db
+    const results = await tx
       .select({
         id: announcements.id,
         title: announcements.title,
@@ -61,7 +59,7 @@ export async function GET(request: NextRequest) {
 
     let cohortMap: Record<string, string> = {};
     if (cohortIds.length > 0) {
-      const cohortRows = await db
+      const cohortRows = await tx
         .select({ id: cohorts.id, name: cohorts.name })
         .from(cohorts)
         .where(inArray(cohorts.id, cohortIds));
@@ -91,6 +89,7 @@ export async function GET(request: NextRequest) {
     }));
 
     return NextResponse.json({ success: true, data, publicKey });
+    });
   } catch (error) {
     console.error("Error fetching announcements:", error);
     return NextResponse.json({ success: false, error: "Internal Server Error" }, { status: 500 });
@@ -126,8 +125,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await setDbSession(db, userId, schoolId);
-
+    return await withTenant(session.user, async (tx) => {
     // Teacher: validate cohort ownership
     if (role === "teacher") {
       if (!cohortId) {
@@ -137,7 +135,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const ownership = await db
+      const ownership = await tx
         .select({ id: teacherCohorts.id })
         .from(teacherCohorts)
         .where(
@@ -170,7 +168,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const [created] = await db
+    const [created] = await tx
       .insert(announcements)
       .values({
         schoolId,
@@ -190,7 +188,7 @@ export async function POST(request: NextRequest) {
 
     if (cohortId) {
       // Get students in cohort
-      const studentRows = await db
+      const studentRows = await tx
         .select({ studentId: studentCohorts.studentId })
         .from(studentCohorts)
         .where(eq(studentCohorts.cohortId, cohortId));
@@ -199,7 +197,7 @@ export async function POST(request: NextRequest) {
 
       // Get parents linked to those students
       if (studentIds.length > 0) {
-        const parentRows = await db
+        const parentRows = await tx
           .select({ parentId: parentStudentLinks.parentId })
           .from(parentStudentLinks)
           .where(inArray(parentStudentLinks.studentId, studentIds));
@@ -209,7 +207,7 @@ export async function POST(request: NextRequest) {
       }
     } else {
       // School-wide: all active users except the author
-      const allUsers = await db
+      const allUsers = await tx
         .select({ id: users.id })
         .from(users)
         .where(and(eq(users.schoolId, schoolId), eq(users.isActive, true)));
@@ -229,9 +227,7 @@ export async function POST(request: NextRequest) {
           authorId: userId,
         },
         recipientIds,
-        db,
-        userId,
-        schoolId
+        tx
       );
     }
 
@@ -245,6 +241,7 @@ export async function POST(request: NextRequest) {
         signature: created.signature,
         createdAt: created.createdAt?.toISOString(),
       },
+    });
     });
   } catch (error) {
     console.error("Error creating announcement:", error);

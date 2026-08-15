@@ -1,8 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
-import { db } from "@/db";
 import { schools } from "@/db/schema";
-import { setDbSession } from "@/lib/db-session";
+import { withTenant } from "@/lib/db-session";
 import { eq } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
@@ -18,23 +17,24 @@ export async function GET() {
   }
 
   const schoolId = session.user.school_id;
-  await setDbSession(db, session.user.id, schoolId);
 
   try {
-    const [schoolData] = await db
-      .select({
-        name: schools.name,
-        slug: schools.slug,
-        logoUrl: schools.logoUrl,
-        primaryColor: schools.primaryColor,
-        secondaryColor: schools.secondaryColor,
-        contactEmail: schools.contactEmail,
-        contactPhone: schools.contactPhone,
-        address: schools.address,
-      })
-      .from(schools)
-      .where(eq(schools.id, schoolId))
-      .limit(1);
+    const [schoolData] = await withTenant(session.user, (tx) =>
+      tx
+        .select({
+          name: schools.name,
+          slug: schools.slug,
+          logoUrl: schools.logoUrl,
+          primaryColor: schools.primaryColor,
+          secondaryColor: schools.secondaryColor,
+          contactEmail: schools.contactEmail,
+          contactPhone: schools.contactPhone,
+          address: schools.address,
+        })
+        .from(schools)
+        .where(eq(schools.id, schoolId))
+        .limit(1)
+    );
 
     if (!schoolData) {
       return NextResponse.json({ success: false, error: "School not found" }, { status: 404 });
@@ -58,7 +58,6 @@ export async function PATCH(request: NextRequest) {
   }
 
   const schoolId = session.user.school_id;
-  await setDbSession(db, session.user.id, schoolId);
 
   const body = (await request.json()) as {
     name?: string;
@@ -84,7 +83,9 @@ export async function PATCH(request: NextRequest) {
   }
 
   try {
-    await db.update(schools).set(updates).where(eq(schools.id, schoolId));
+    await withTenant(session.user, (tx) =>
+      tx.update(schools).set(updates).where(eq(schools.id, schoolId))
+    );
     return NextResponse.json({ success: true, data: { updated: true } });
   } catch (error) {
     console.error("Error updating school settings:", error);

@@ -1,6 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
-import { db } from "@/db";
 import {
   directMessages,
   users,
@@ -10,7 +9,7 @@ import {
   cohorts,
   notifications,
 } from "@/db/schema";
-import { setDbSession } from "@/lib/db-session";
+import { withTenant } from "@/lib/db-session";
 import { and, eq, or, desc, inArray, sql } from "drizzle-orm";
 import { aliasedTable } from "drizzle-orm/alias";
 
@@ -37,8 +36,6 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  await setDbSession(db, userId, schoolId);
-
   if (countOnly) {
     const countCondition =
       role === "admin"
@@ -49,10 +46,12 @@ export async function GET(request: NextRequest) {
             eq(directMessages.isRead, false)
           );
 
-    const [countRow] = await db
-      .select({ total: sql`COUNT(*)`.as("total") })
-      .from(directMessages)
-      .where(countCondition);
+    const [countRow] = await withTenant(session.user, (tx) =>
+      tx
+        .select({ total: sql`COUNT(*)`.as("total") })
+        .from(directMessages)
+        .where(countCondition)
+    );
 
     return NextResponse.json({
       success: true,
@@ -60,7 +59,7 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  const rows = await db
+  const rows = await withTenant(session.user, (tx) => tx
     .select({
       id: directMessages.id,
       body: directMessages.body,
@@ -86,7 +85,8 @@ export async function GET(request: NextRequest) {
             or(eq(directMessages.senderId, userId), eq(directMessages.receiverId, userId))
           )
     )
-    .orderBy(desc(directMessages.createdAt));
+    .orderBy(desc(directMessages.createdAt))
+  );
 
   type ThreadSummary = {
     thread_id: string;
@@ -170,18 +170,20 @@ export async function GET(request: NextRequest) {
       .map((thread) => thread.participant_id);
 
     if (teacherIds.length > 0) {
-      const cohortRows = await db
-        .select({ teacherId: teacherCohorts.teacherId, cohortName: cohorts.name })
-        .from(teacherCohorts)
-        .innerJoin(cohorts, eq(teacherCohorts.cohortId, cohorts.id))
-        .innerJoin(studentCohorts, eq(studentCohorts.cohortId, teacherCohorts.cohortId))
-        .innerJoin(parentStudentLinks, eq(parentStudentLinks.studentId, studentCohorts.studentId))
-        .where(
-          and(
-            eq(parentStudentLinks.parentId, userId),
-            inArray(teacherCohorts.teacherId, teacherIds)
+      const cohortRows = await withTenant(session.user, (tx) =>
+        tx
+          .select({ teacherId: teacherCohorts.teacherId, cohortName: cohorts.name })
+          .from(teacherCohorts)
+          .innerJoin(cohorts, eq(teacherCohorts.cohortId, cohorts.id))
+          .innerJoin(studentCohorts, eq(studentCohorts.cohortId, teacherCohorts.cohortId))
+          .innerJoin(parentStudentLinks, eq(parentStudentLinks.studentId, studentCohorts.studentId))
+          .where(
+            and(
+              eq(parentStudentLinks.parentId, userId),
+              inArray(teacherCohorts.teacherId, teacherIds)
+            )
           )
-        );
+      );
 
       const cohortMap = new Map<string, string>();
       for (const row of cohortRows) {
@@ -230,12 +232,12 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  await setDbSession(db, senderId, schoolId);
-
-  const participants = await db
-    .select({ id: users.id, role: users.role, schoolId: users.schoolId, fullName: users.fullName, avatarUrl: users.avatarUrl })
-    .from(users)
-    .where(inArray(users.id, [senderId, receiverId]));
+  const participants = await withTenant(session.user, (tx) =>
+    tx
+      .select({ id: users.id, role: users.role, schoolId: users.schoolId, fullName: users.fullName, avatarUrl: users.avatarUrl })
+      .from(users)
+      .where(inArray(users.id, [senderId, receiverId]))
+  );
 
   if (participants.length !== 2) {
     return NextResponse.json({ success: false, error: "Sender or receiver not found" }, { status: 404 });
@@ -274,18 +276,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const cohortLink = await db
-      .select({ id: parentStudentLinks.id })
-      .from(parentStudentLinks)
-      .innerJoin(studentCohorts, eq(parentStudentLinks.studentId, studentCohorts.studentId))
-      .innerJoin(teacherCohorts, eq(studentCohorts.cohortId, teacherCohorts.cohortId))
-      .where(
-        and(
-          eq(teacherCohorts.teacherId, senderId),
-          eq(parentStudentLinks.parentId, receiverId)
+    const cohortLink = await withTenant(session.user, (tx) =>
+      tx
+        .select({ id: parentStudentLinks.id })
+        .from(parentStudentLinks)
+        .innerJoin(studentCohorts, eq(parentStudentLinks.studentId, studentCohorts.studentId))
+        .innerJoin(teacherCohorts, eq(studentCohorts.cohortId, teacherCohorts.cohortId))
+        .where(
+          and(
+            eq(teacherCohorts.teacherId, senderId),
+            eq(parentStudentLinks.parentId, receiverId)
+          )
         )
-      )
-      .limit(1);
+        .limit(1)
+    );
 
     if (cohortLink.length === 0) {
       return NextResponse.json(
@@ -307,24 +311,28 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const [created] = await db
-    .insert(directMessages)
-    .values({
-      schoolId,
-      senderId,
-      receiverId,
-      body: text,
-      isRead: false,
-    })
-    .returning();
+  const created = await withTenant(session.user, async (tx) => {
+    const [row] = await tx
+      .insert(directMessages)
+      .values({
+        schoolId,
+        senderId,
+        receiverId,
+        body: text,
+        isRead: false,
+      })
+      .returning();
 
-  await db.insert(notifications).values({
-    userId: receiverId,
-    schoolId,
-    title: `New message from ${senderUser.fullName}`,
-    body: text.length > 120 ? `${text.slice(0, 117)}...` : text,
-    type: "message",
-    meta: { thread_id: createThreadId(senderId, receiverId) },
+    await tx.insert(notifications).values({
+      userId: receiverId,
+      schoolId,
+      title: `New message from ${senderUser.fullName}`,
+      body: text.length > 120 ? `${text.slice(0, 117)}...` : text,
+      type: "message",
+      meta: { thread_id: createThreadId(senderId, receiverId) },
+    });
+
+    return row;
   });
 
   return NextResponse.json({

@@ -5,9 +5,8 @@
 
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { db } from "@/db";
 import { cohorts, teacherCohorts } from "@/db/schema";
-import { setDbSession } from "@/lib/db-session";
+import { withTenant } from "@/lib/db-session";
 import { eq } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
@@ -25,25 +24,23 @@ export async function GET() {
   }
 
   try {
-    await setDbSession(db, userId, schoolId);
+    const rows = await withTenant(session.user, (tx) => {
+      if (role === "admin") {
+        return tx
+          .select({ id: cohorts.id, name: cohorts.name, academicYear: cohorts.academicYear })
+          .from(cohorts)
+          .where(eq(cohorts.schoolId, schoolId))
+          .orderBy(cohorts.name);
+      }
 
-    if (role === "admin") {
-      const rows = await db
+      // Teacher — only their assigned cohorts
+      return tx
         .select({ id: cohorts.id, name: cohorts.name, academicYear: cohorts.academicYear })
-        .from(cohorts)
-        .where(eq(cohorts.schoolId, schoolId))
+        .from(teacherCohorts)
+        .innerJoin(cohorts, eq(teacherCohorts.cohortId, cohorts.id))
+        .where(eq(teacherCohorts.teacherId, userId))
         .orderBy(cohorts.name);
-
-      return NextResponse.json({ success: true, data: rows });
-    }
-
-    // Teacher — only their assigned cohorts
-    const rows = await db
-      .select({ id: cohorts.id, name: cohorts.name, academicYear: cohorts.academicYear })
-      .from(teacherCohorts)
-      .innerJoin(cohorts, eq(teacherCohorts.cohortId, cohorts.id))
-      .where(eq(teacherCohorts.teacherId, userId))
-      .orderBy(cohorts.name);
+    });
 
     return NextResponse.json({ success: true, data: rows });
   } catch (error) {
