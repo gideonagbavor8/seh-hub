@@ -1,8 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
-import { db } from "@/db";
 import { directMessages, users } from "@/db/schema";
-import { setDbSession } from "@/lib/db-session";
+import { withTenant } from "@/lib/db-session";
 import { aliasedTable } from "drizzle-orm/alias";
 import { and, eq, or, asc } from "drizzle-orm";
 
@@ -47,34 +46,34 @@ export async function GET(
     return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
   }
 
-  await setDbSession(db, userId, schoolId);
+  const rows = await withTenant(session.user, async (tx) => {
+    await tx
+      .update(directMessages)
+      .set({ isRead: true })
+      .where(
+        and(
+          eq(directMessages.schoolId, schoolId),
+          eq(directMessages.receiverId, userId),
+          getThreadCondition(firstId, secondId)
+        )
+      );
 
-  await db
-    .update(directMessages)
-    .set({ isRead: true })
-    .where(
-      and(
-        eq(directMessages.schoolId, schoolId),
-        eq(directMessages.receiverId, userId),
-        getThreadCondition(firstId, secondId)
-      )
-    );
-
-  const rows = await db
-    .select({
-      id: directMessages.id,
-      body: directMessages.body,
-      senderId: directMessages.senderId,
-      createdAt: directMessages.createdAt,
-      isRead: directMessages.isRead,
-      senderName: sender.fullName,
-      senderAvatarUrl: sender.avatarUrl,
-      senderRole: sender.role,
-    })
-    .from(directMessages)
-    .innerJoin(sender, eq(directMessages.senderId, sender.id))
-    .where(and(eq(directMessages.schoolId, schoolId), getThreadCondition(firstId, secondId)))
-    .orderBy(asc(directMessages.createdAt));
+    return tx
+      .select({
+        id: directMessages.id,
+        body: directMessages.body,
+        senderId: directMessages.senderId,
+        createdAt: directMessages.createdAt,
+        isRead: directMessages.isRead,
+        senderName: sender.fullName,
+        senderAvatarUrl: sender.avatarUrl,
+        senderRole: sender.role,
+      })
+      .from(directMessages)
+      .innerJoin(sender, eq(directMessages.senderId, sender.id))
+      .where(and(eq(directMessages.schoolId, schoolId), getThreadCondition(firstId, secondId)))
+      .orderBy(asc(directMessages.createdAt));
+  });
 
   const messages = rows.map((message) => ({
     id: message.id,
@@ -114,18 +113,18 @@ export async function PATCH(
     return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
   }
 
-  await setDbSession(db, userId, schoolId);
-
-  await db
-    .update(directMessages)
-    .set({ isRead: true })
-    .where(
-      and(
-        eq(directMessages.schoolId, schoolId),
-        eq(directMessages.receiverId, userId),
-        getThreadCondition(firstId, secondId)
+  await withTenant(session.user, (tx) =>
+    tx
+      .update(directMessages)
+      .set({ isRead: true })
+      .where(
+        and(
+          eq(directMessages.schoolId, schoolId),
+          eq(directMessages.receiverId, userId),
+          getThreadCondition(firstId, secondId)
+        )
       )
-    );
+  );
 
   return NextResponse.json({ success: true, data: { updated: true } });
 }

@@ -4,9 +4,8 @@
 
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { db } from "@/db";
 import { announcements, users, cohorts, notifications } from "@/db/schema";
-import { setDbSession } from "@/lib/db-session";
+import { withTenant } from "@/lib/db-session";
 import { getSchoolPublicKey } from "@/lib/crypto";
 import { eq, and } from "drizzle-orm";
 
@@ -23,9 +22,8 @@ export async function GET(
   const { id } = await params;
 
   try {
-    await setDbSession(db, userId, schoolId);
-
-    const results = await db
+    return await withTenant(session.user, async (tx) => {
+    const results = await tx
       .select({
         id: announcements.id,
         title: announcements.title,
@@ -54,7 +52,7 @@ export async function GET(
     // Get cohort name
     let cohortName = "School-Wide";
     if (ann.cohortId) {
-      const cohortRows = await db
+      const cohortRows = await tx
         .select({ name: cohorts.name })
         .from(cohorts)
         .where(eq(cohorts.id, ann.cohortId))
@@ -87,6 +85,7 @@ export async function GET(
       },
       publicKey,
     });
+    });
   } catch (error) {
     console.error("Error fetching announcement:", error);
     return NextResponse.json({ success: false, error: "Internal Server Error" }, { status: 500 });
@@ -110,10 +109,9 @@ export async function DELETE(
   }
 
   try {
-    await setDbSession(db, userId, schoolId);
-
+    return await withTenant(session.user, async (tx) => {
     // Fetch announcement to check ownership
-    const ann = await db
+    const ann = await tx
       .select({ id: announcements.id, authorId: announcements.authorId })
       .from(announcements)
       .where(and(eq(announcements.id, id), eq(announcements.schoolId, schoolId)))
@@ -132,9 +130,10 @@ export async function DELETE(
     }
 
     // Delete the announcement (cascade handles related data via FK constraints)
-    await db.delete(announcements).where(eq(announcements.id, id));
+    await tx.delete(announcements).where(eq(announcements.id, id));
 
     return NextResponse.json({ success: true, message: "Announcement deleted" });
+    });
   } catch (error) {
     console.error("Error deleting announcement:", error);
     return NextResponse.json({ success: false, error: "Internal Server Error" }, { status: 500 });

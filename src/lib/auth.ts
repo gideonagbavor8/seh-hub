@@ -3,8 +3,7 @@ import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { db } from "@/db";
-import { users, schools } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
@@ -23,47 +22,42 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const password = credentials.password as string;
         const schoolSlug = credentials.school_slug as string;
 
-        // Fetch the school first
-        const schoolList = await db
-          .select()
-          .from(schools)
-          .where(eq(schools.slug, schoolSlug))
-          .limit(1);
+        // Sign-in cannot use withTenant: RLS needs a current user, and this IS
+        // the step that establishes one. app_login_lookup is a SECURITY DEFINER
+        // function scoped to a single (slug, email) pair — see rls.sql. A plain
+        // SELECT here returns zero rows under RLS and every login fails.
+        const result = await db.execute(
+          sql`SELECT * FROM app_login_lookup(${schoolSlug}, ${email})`
+        );
 
-        if (schoolList.length === 0) {
-          return null; // School not found
-        }
-        const school = schoolList[0];
+        const row = (result.rows as Array<{
+          user_id: string;
+          password_hash: string;
+          full_name: string;
+          user_role: "admin" | "teacher" | "parent" | "student";
+          avatar_url: string | null;
+          is_active: boolean;
+          school_id: string;
+          school_slug: string;
+        }>)[0];
 
-        // Fetch the user
-        const userList = await db
-          .select()
-          .from(users)
-          .where(and(eq(users.email, email), eq(users.schoolId, school.id)))
-          .limit(1);
-
-        if (userList.length === 0) {
-          return null; // User not found
-        }
-        const user = userList[0];
-
-        if (!user.isActive) {
-          return null; // Account disabled
+        if (!row || !row.is_active) {
+          return null; // Unknown school/email, or disabled account
         }
 
-        const passwordMatch = await bcrypt.compare(password, user.passwordHash);
+        const passwordMatch = await bcrypt.compare(password, row.password_hash);
         if (!passwordMatch) {
           return null; // Incorrect password
         }
 
         return {
-          id: user.id,
-          email: user.email,
-          full_name: user.fullName,
-          role: user.role,
-          school_id: school.id,
-          school_slug: school.slug,
-          avatar_url: user.avatarUrl,
+          id: row.user_id,
+          email,
+          full_name: row.full_name,
+          role: row.user_role,
+          school_id: row.school_id,
+          school_slug: row.school_slug,
+          avatar_url: row.avatar_url,
         };
       },
     }),

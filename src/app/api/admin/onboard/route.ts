@@ -1,9 +1,8 @@
 import bcrypt from "bcryptjs";
 import { NextResponse, type NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
-import { db } from "@/db";
 import { schools, automationJobs, cohorts, parentStudentLinks, studentCohorts, teacherCohorts, users } from "@/db/schema";
-import { setDbSession } from "@/lib/db-session";
+import { withTenant } from "@/lib/db-session";
 import { and, eq } from "drizzle-orm";
 import { findExistingEmails, parseOnboardingFile, validateOnboardingRows } from "@/lib/admin-onboarding";
 
@@ -39,11 +38,13 @@ export async function POST(request: NextRequest) {
   const schoolSlug = session.user.school_slug;
   const schoolName = session.user.school_slug;
 
-  const schoolRows = await db
-    .select({ name: schools.name })
-    .from(schools)
-    .where(eq(schools.id, schoolId))
-    .limit(1);
+  const schoolRows = await withTenant(session.user, (tx) =>
+    tx
+      .select({ name: schools.name })
+      .from(schools)
+      .where(eq(schools.id, schoolId))
+      .limit(1)
+  );
 
   const actualSchoolName = schoolRows.length > 0 ? schoolRows[0].name : schoolName;
 
@@ -68,8 +69,6 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    await setDbSession(db, userId, schoolId);
-
     const validation = validateOnboardingRows(parsedRows);
     if (!validation.success) {
       return NextResponse.json({ success: false, error: "Validation failed", data: { errors: validation.errors } }, { status: 400 });
@@ -83,15 +82,15 @@ export async function POST(request: NextRequest) {
       ])
     );
 
-    const existingEmails = await findExistingEmails(db, schoolId, allEmails);
+    const existingEmails = await withTenant(session.user, (tx) =>
+      findExistingEmails(tx, schoolId, allEmails)
+    );
     if (existingEmails.size > 0) {
       const errors = Array.from(existingEmails).map((email) => `Email already exists in school: ${email}`);
       return NextResponse.json({ success: false, error: "Validation failed", data: { errors } }, { status: 400 });
     }
 
-    const result = await db.transaction(async (tx) => {
-      await setDbSession(tx, userId, schoolId);
-
+    const result = await withTenant(session.user, async (tx) => {
       const cohortNames = Array.from(new Set(parsedRows.map((row) => row.cohort_name.trim())));
       const cohortMap = new Map<string, { id: string; name: string }>();
 
