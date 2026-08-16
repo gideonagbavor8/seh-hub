@@ -45,6 +45,7 @@ const NAV_BY_ROLE: Record<string, { label: string; href: string; icon: React.Ele
   parent: [
     { label: "Feed",          href: "/dashboard/feed",          icon: Rss },
     { label: "Messages",      href: "/dashboard/messages",      icon: MessageSquare },
+    { label: "Homework",      href: "/dashboard/homework",      icon: BookOpen },
     { label: "My Children",   href: "/dashboard/children",      icon: Baby },
     { label: "Calendar",      href: "/dashboard/calendar",      icon: Calendar },
   ],
@@ -59,7 +60,7 @@ export default function Sidebar({ isMobileDrawer = false }: SidebarProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const currentTab = searchParams.get("tab");
-  const { user, school, setIsMobileSidebarOpen } = useDashboard();
+  const { user, school, unreadCount, outstandingHomework, setIsMobileSidebarOpen } = useDashboard();
 
   const navLinks = NAV_BY_ROLE[user.role] ?? [];
   const initials = user.full_name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase();
@@ -136,6 +137,26 @@ export default function Sidebar({ isMobileDrawer = false }: SidebarProps) {
                   )}
                   <Icon className="h-[18px] w-[18px] flex-shrink-0" />
                   <span className="truncate">{link.label}</span>
+
+                  {/* Unread threads, not notifications — this count only
+                      clears when the conversation is actually opened. */}
+                  {link.href === "/dashboard/messages" && unreadCount > 0 && (
+                    <span className="ml-auto flex h-5 min-w-5 flex-shrink-0 items-center justify-center rounded-full bg-danger px-1.5 text-[11px] font-semibold leading-none text-white">
+                      {unreadCount > 9 ? "9+" : unreadCount}
+                    </span>
+                  )}
+
+                  {/* Work still to do. Uses the accent rather than red: homework
+                      is a task, not an alert. */}
+                  {link.href === "/dashboard/homework" && outstandingHomework > 0 && (
+                    <span
+                      className={`ml-auto flex h-5 min-w-5 flex-shrink-0 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold leading-none ${
+                        isActive ? "bg-primary text-on-primary" : "bg-primary-soft text-primary"
+                      }`}
+                    >
+                      {outstandingHomework > 9 ? "9+" : outstandingHomework}
+                    </span>
+                  )}
                 </Link>
               </li>
             );
