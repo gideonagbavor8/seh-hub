@@ -49,6 +49,31 @@ export async function withTenant<T>(
 }
 
 /**
+ * True when an error is Postgres refusing a write because of RLS.
+ *
+ * Drizzle wraps driver errors, so `error.message` is its own "Failed query: …"
+ * text and the Postgres detail sits on `error.cause`. Matching only the top
+ * level silently misses every policy rejection and turns an expected 403 into
+ * a 500. RLS violations raise SQLSTATE 42501.
+ */
+export function isRlsViolation(error: unknown): boolean {
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+
+  while (current && typeof current === "object" && !seen.has(current)) {
+    seen.add(current);
+    const e = current as { code?: string; message?: string; cause?: unknown };
+
+    if (e.code === "42501") return true;
+    if (typeof e.message === "string" && e.message.includes("row-level security")) return true;
+
+    current = e.cause;
+  }
+
+  return false;
+}
+
+/**
  * Runs `fn` with system privileges, for work that belongs to no user — the
  * cron job processor being the only case today.
  *

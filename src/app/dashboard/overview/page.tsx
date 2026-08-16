@@ -29,43 +29,45 @@ interface Announcement {
   authorName: string;
 }
 
-// NOTE: still placeholder figures. /api/overview/stats returns the real numbers
-// but is not wired up yet — see the project audit.
-const getStats = (role: string) => {
-  switch (role) {
-    case "admin":
-      return [
-        { value: 248, label: "Total Students",      icon: GraduationCap, trend: "+12" },
-        { value: 18,  label: "Total Teachers",       icon: Users,         trend: "+2"  },
-        { value: 6,   label: "Active Announcements", icon: Megaphone,     trend: "+1"  },
-      ];
-    case "teacher":
-      return [
-        { value: 42,  label: "My Students",     icon: GraduationCap, trend: "stable" },
-        { value: 3,   label: "Unread Messages", icon: MessageSquare, trend: "+3"     },
-        { value: 5,   label: "Posts This Week", icon: Megaphone,     trend: "+5"     },
-      ];
-    case "parent":
-      return [
-        { value: 2,   label: "My Children",       icon: Baby,          trend: "stable" },
-        { value: 4,   label: "New Announcements", icon: Megaphone,     trend: "+4"     },
-        { value: 1,   label: "Unread Messages",   icon: MessageSquare, trend: "+1"     },
-      ];
-    case "student":
-      return [
-        { value: 3,   label: "New Announcements", icon: Megaphone, trend: "+3" },
-        { value: 2,   label: "Homework Due",      icon: BookOpen,  trend: "+2" },
-        { value: 4,   label: "Days to Next Event", icon: Calendar, trend: ""   },
-      ];
-    default:
-      return [];
-  }
+interface StatRow {
+  key: string;
+  value: number;
+}
+
+/**
+ * Presentation for each stat key returned by /api/overview/stats.
+ * The API owns the numbers; this map only supplies the icon and wording.
+ */
+const STAT_META: Record<string, { label: string; icon: React.ElementType }> = {
+  students:      { label: "Students",          icon: GraduationCap },
+  teachers:      { label: "Teachers",          icon: Users },
+  posts:         { label: "Posts this week",   icon: Megaphone },
+  messages:      { label: "Unread messages",   icon: MessageSquare },
+  children:      { label: "My children",       icon: Baby },
+  announcements: { label: "New announcements", icon: Megaphone },
+  homework:      { label: "Homework due",      icon: BookOpen },
+  events:        { label: "Upcoming events",   icon: Calendar },
 };
+
+/** The same key reads differently depending on who is looking at it. */
+const ROLE_LABEL_OVERRIDES: Record<string, Record<string, string>> = {
+  admin:   { students: "Total students", teachers: "Total teachers" },
+  teacher: { students: "My students" },
+};
+
+function describeStat(role: string, key: string) {
+  const meta = STAT_META[key];
+  const label = ROLE_LABEL_OVERRIDES[role]?.[key] ?? meta?.label ?? key;
+  return { label, Icon: meta?.icon ?? TrendingUp };
+}
 
 export default function OverviewPage() {
   const { user, setPageTitle } = useDashboard();
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [loadingAnn, setLoadingAnn] = useState(true);
+  const [stats, setStats] = useState<StatRow[]>([]);
+  const [loadingStats, setLoadingStats] = useState(true);
+  const [statsFailed, setStatsFailed] = useState(false);
   const [date, setDate] = useState("");
   const [greeting, setGreeting] = useState("Good morning");
 
@@ -97,7 +99,28 @@ export default function OverviewPage() {
       .finally(() => setLoadingAnn(false));
   }, []);
 
-  const stats = getStats(user.role);
+  // Real figures, scoped to the caller's role and school by the API.
+  useEffect(() => {
+    let cancelled = false;
+
+    fetch("/api/overview/stats")
+      .then((r) => r.json())
+      .then((j) => {
+        if (cancelled) return;
+        if (j.success && Array.isArray(j.data)) setStats(j.data);
+        else setStatsFailed(true);
+      })
+      .catch(() => {
+        if (!cancelled) setStatsFailed(true);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingStats(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-8">
@@ -113,41 +136,49 @@ export default function OverviewPage() {
       </SplitReveal>
 
       {/* ── Stats ── */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        {stats.map((stat, i) => {
-          const Icon = stat.icon;
-          return (
-            <motion.div
-              key={stat.label}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.35, delay: i * 0.06, ease: [0.22, 1, 0.36, 1] }}
-              className="card p-5"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <p className="font-heading text-[34px] font-semibold leading-none text-ink">
-                    <CountUp to={stat.value} duration={1100} delay={i * 90} />
-                  </p>
-                  <p className="mt-2 truncate text-sm font-medium text-ink-soft">
-                    {stat.label}
-                  </p>
-                  {stat.trend && stat.trend !== "stable" && (
-                    <p className="mt-2 flex items-center gap-1 text-xs font-semibold text-primary">
-                      <TrendingUp className="h-3.5 w-3.5" />
-                      {stat.trend} this week
+      {loadingStats ? (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          {[0, 1, 2].map((n) => (
+            <div key={n} className="card space-y-3 p-5">
+              <div className="skeleton h-9 w-16" />
+              <div className="skeleton h-3.5 w-28" />
+            </div>
+          ))}
+        </div>
+      ) : statsFailed ? (
+        <div className="card flex items-center gap-3 p-5 text-sm text-ink-soft">
+          <AlertTriangle className="h-4 w-4 flex-shrink-0 text-warning" />
+          Statistics are unavailable right now.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          {stats.map((stat, i) => {
+            const { label, Icon } = describeStat(user.role, stat.key);
+            return (
+              <motion.div
+                key={stat.key}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.35, delay: i * 0.06, ease: [0.22, 1, 0.36, 1] }}
+                className="card p-5"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-heading text-[34px] font-semibold leading-none text-ink tabular">
+                      <CountUp to={stat.value} duration={1100} delay={i * 90} />
                     </p>
-                  )}
-                </div>
+                    <p className="mt-2 truncate text-sm font-medium text-ink-soft">{label}</p>
+                  </div>
 
-                <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-primary-soft text-primary">
-                  <Icon className="h-5 w-5" />
-                </span>
-              </div>
-            </motion.div>
-          );
-        })}
-      </div>
+                  <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-primary-soft text-primary">
+                    <Icon className="h-5 w-5" />
+                  </span>
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
+      )}
 
       {/* ── Recent Announcements ── */}
       <ClipReveal from="bottom" delay={0.1} className="flex flex-col gap-3">

@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { Search, ArrowLeft, Send, Check, Plus, MessagesSquare, Loader2 } from "lucide-react";
 import { useDashboard } from "@/context/DashboardContext";
@@ -44,12 +45,17 @@ function initialsOf(name: string) {
     .toUpperCase();
 }
 
-export default function MessagesPage() {
+function MessagesConsole() {
   const { user, setPageTitle } = useDashboard();
+  const searchParams = useSearchParams();
   const reduceMotion = useReducedMotion();
   const [threads, setThreads] = useState<ThreadSummary[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+  // Seeded from ?thread=<id> so a notification can open the exact
+  // conversation rather than dumping you on the thread list.
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(
+    () => searchParams.get("thread")
+  );
   const [pendingThread, setPendingThread] = useState<ThreadSummary | null>(null);
   const [messages, setMessages] = useState<MessageItem[]>([]);
   const [composer, setComposer] = useState("");
@@ -78,6 +84,11 @@ export default function MessagesPage() {
       ),
     [searchTerm, threads]
   );
+
+  useEffect(() => {
+    const requested = searchParams.get("thread");
+    if (requested) setActiveThreadId(requested);
+  }, [searchParams]);
 
   useEffect(() => {
     setPageTitle("Messages");
@@ -555,5 +566,13 @@ export default function MessagesPage() {
         ) : null}
       </AnimatePresence>
     </div>
+  );
+}
+
+export default function MessagesPage() {
+  return (
+    <Suspense fallback={null}>
+      <MessagesConsole />
+    </Suspense>
   );
 }
