@@ -33,6 +33,7 @@ const NAV_BY_ROLE: Record<string, { label: string; href: string; icon: React.Ele
   parent: [
     { label: "Feed",     href: "/dashboard/feed",     icon: Rss },
     { label: "Messages", href: "/dashboard/messages", icon: MessageSquare },
+    { label: "Homework", href: "/dashboard/homework", icon: BookOpen },
     { label: "Children", href: "/dashboard/children", icon: Baby },
     { label: "Calendar", href: "/dashboard/calendar", icon: Calendar },
   ],
@@ -47,7 +48,7 @@ export default function BottomNav() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const currentTab = searchParams.get("tab");
-  const { user } = useDashboard();
+  const { user, unreadCount, outstandingHomework } = useDashboard();
   const links = NAV_BY_ROLE[user.role] ?? [];
 
   if (links.length === 0) return null;
@@ -85,11 +86,23 @@ export default function BottomNav() {
                   />
                 )}
 
-                <Icon
-                  className={`h-[19px] w-[19px] transition-colors duration-150 ${
-                    isActive ? "text-primary" : "text-ink-muted"
-                  }`}
-                />
+                <span className="relative">
+                  <Icon
+                    className={`h-[19px] w-[19px] transition-colors duration-150 ${
+                      isActive ? "text-primary" : "text-ink-muted"
+                    }`}
+                  />
+                  {link.href === "/dashboard/messages" && unreadCount > 0 && (
+                    <span className="absolute -right-2 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-semibold leading-none text-white ring-2 ring-canvas">
+                      {unreadCount > 9 ? "9+" : unreadCount}
+                    </span>
+                  )}
+                  {link.href === "/dashboard/homework" && outstandingHomework > 0 && (
+                    <span className="absolute -right-2 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-none text-on-primary ring-2 ring-canvas">
+                      {outstandingHomework > 9 ? "9+" : outstandingHomework}
+                    </span>
+                  )}
+                </span>
                 <span
                   className={`text-[10px] font-semibold leading-none transition-colors duration-150 ${
                     isActive ? "text-primary" : "text-ink-muted"
