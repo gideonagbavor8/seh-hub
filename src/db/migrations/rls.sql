@@ -90,7 +90,8 @@ BEGIN
   FOREACH t IN ARRAY ARRAY[
     'schools','users','cohorts','teacher_cohorts','student_cohorts',
     'parent_student_links','announcements','direct_messages',
-    'notifications','automation_jobs'
+    'notifications','automation_jobs',
+    'homework','homework_completions','timetable_slots'
   ] LOOP
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
     EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', t);
@@ -311,3 +312,130 @@ CREATE POLICY automation_jobs_select ON automation_jobs FOR SELECT
 -- Queued by routeAnnouncement() when staff post an emergency notice.
 CREATE POLICY automation_jobs_insert ON automation_jobs FOR INSERT
   WITH CHECK (school_id = app_sid() AND app_role() IN ('admin', 'teacher'));
+
+
+-- ═══ 11. homework ══════════════════════════════════════════════════════════
+-- Staff see everything in their school. Students see their own cohort's work.
+-- Parents see the work set for any cohort their children belong to.
+CREATE POLICY homework_select ON homework FOR SELECT
+  USING (
+    school_id = app_sid()
+    AND (
+      app_role() IN ('admin', 'teacher')
+      OR (
+        app_role() = 'student'
+        AND EXISTS (
+          SELECT 1 FROM student_cohorts sc
+          WHERE sc.student_id = app_uid() AND sc.cohort_id = homework.cohort_id
+        )
+      )
+      OR (
+        app_role() = 'parent'
+        AND EXISTS (
+          SELECT 1 FROM parent_student_links psl
+          JOIN student_cohorts sc ON psl.student_id = sc.student_id
+          WHERE psl.parent_id = app_uid() AND sc.cohort_id = homework.cohort_id
+        )
+      )
+    )
+  );
+
+-- A teacher may only set work for a cohort they actually teach.
+CREATE POLICY homework_insert ON homework FOR INSERT
+  WITH CHECK (
+    school_id = app_sid()
+    AND teacher_id = app_uid()
+    AND (
+      app_role() = 'admin'
+      OR (
+        app_role() = 'teacher'
+        AND EXISTS (
+          SELECT 1 FROM teacher_cohorts tc
+          WHERE tc.teacher_id = app_uid() AND tc.cohort_id = homework.cohort_id
+        )
+      )
+    )
+  );
+
+CREATE POLICY homework_update ON homework FOR UPDATE
+  USING (
+    school_id = app_sid()
+    AND (app_role() = 'admin' OR (app_role() = 'teacher' AND teacher_id = app_uid()))
+  )
+  WITH CHECK (
+    school_id = app_sid()
+    AND (app_role() = 'admin' OR (app_role() = 'teacher' AND teacher_id = app_uid()))
+  );
+
+CREATE POLICY homework_delete ON homework FOR DELETE
+  USING (
+    school_id = app_sid()
+    AND (app_role() = 'admin' OR (app_role() = 'teacher' AND teacher_id = app_uid()))
+  );
+
+
+-- ═══ 12. homework_completions ══════════════════════════════════════════════
+-- Visible to staff, to the student themselves, and to that student's parents.
+CREATE POLICY homework_completions_select ON homework_completions FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM homework h
+      WHERE h.id = homework_completions.homework_id AND h.school_id = app_sid()
+    )
+    AND (
+      app_role() IN ('admin', 'teacher')
+      OR student_id = app_uid()
+      OR EXISTS (
+        SELECT 1 FROM parent_student_links psl
+        WHERE psl.parent_id = app_uid() AND psl.student_id = homework_completions.student_id
+      )
+    )
+  );
+
+-- Only the student can tick their own work done, and only for homework set to
+-- a cohort they belong to. Nobody can mark work done on another child's behalf.
+CREATE POLICY homework_completions_insert ON homework_completions FOR INSERT
+  WITH CHECK (
+    student_id = app_uid()
+    AND app_role() = 'student'
+    AND EXISTS (
+      SELECT 1 FROM homework h
+      JOIN student_cohorts sc ON sc.cohort_id = h.cohort_id
+      WHERE h.id = homework_completions.homework_id
+        AND h.school_id = app_sid()
+        AND sc.student_id = app_uid()
+    )
+  );
+
+CREATE POLICY homework_completions_delete ON homework_completions FOR DELETE
+  USING (student_id = app_uid() AND app_role() = 'student');
+
+
+-- ═══ 13. timetable_slots ═══════════════════════════════════════════════════
+CREATE POLICY timetable_slots_select ON timetable_slots FOR SELECT
+  USING (
+    school_id = app_sid()
+    AND (
+      app_role() IN ('admin', 'teacher')
+      OR (
+        app_role() = 'student'
+        AND EXISTS (
+          SELECT 1 FROM student_cohorts sc
+          WHERE sc.student_id = app_uid() AND sc.cohort_id = timetable_slots.cohort_id
+        )
+      )
+      OR (
+        app_role() = 'parent'
+        AND EXISTS (
+          SELECT 1 FROM parent_student_links psl
+          JOIN student_cohorts sc ON psl.student_id = sc.student_id
+          WHERE psl.parent_id = app_uid() AND sc.cohort_id = timetable_slots.cohort_id
+        )
+      )
+    )
+  );
+
+-- The timetable is administrative data; only admins may edit it.
+CREATE POLICY timetable_slots_write ON timetable_slots FOR ALL
+  USING (school_id = app_sid() AND app_role() = 'admin')
+  WITH CHECK (school_id = app_sid() AND app_role() = 'admin');
