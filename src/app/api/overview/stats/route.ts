@@ -25,23 +25,25 @@ export async function GET() {
   const { id: userId, school_id: schoolId, role } = session.user;
 
   try {
-    // One transaction for the whole handler; queries inside Promise.all are
-    // queued on the single pooled connection, which is fine for counts.
+    // One transaction for the whole handler.
+    //
+    // These counts run SEQUENTIALLY on purpose. A transaction is a single
+    // connection, and firing queries at it concurrently with Promise.all
+    // silently returns wrong results — the first query resolves correctly and
+    // the rest come back as zero. It was safe before only because the old HTTP
+    // driver gave every query its own connection.
     return await withTenant(session.user, async (tx) => {
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
     if (role === "admin") {
-      const [[teacherRow], [studentRow], [parentRow], [annRow]] = await Promise.all([
-        tx.select({ count: sql<number>`COUNT(*)` }).from(users)
-          .where(and(eq(users.schoolId, schoolId), eq(users.role, "teacher"), eq(users.isActive, true))),
-        tx.select({ count: sql<number>`COUNT(*)` }).from(users)
-          .where(and(eq(users.schoolId, schoolId), eq(users.role, "student"), eq(users.isActive, true))),
-        tx.select({ count: sql<number>`COUNT(*)` }).from(users)
-          .where(and(eq(users.schoolId, schoolId), eq(users.role, "parent"), eq(users.isActive, true))),
-        tx.select({ count: sql<number>`COUNT(*)` }).from(announcements)
-          .where(and(eq(announcements.schoolId, schoolId), gte(announcements.createdAt, sevenDaysAgo))),
-      ]);
+      const [teacherRow] = await tx.select({ count: sql<number>`COUNT(*)` }).from(users)
+        .where(and(eq(users.schoolId, schoolId), eq(users.role, "teacher"), eq(users.isActive, true)));
+      const [studentRow] = await tx.select({ count: sql<number>`COUNT(*)` }).from(users)
+        .where(and(eq(users.schoolId, schoolId), eq(users.role, "student"), eq(users.isActive, true)));
+      const [annRow] = await tx.select({ count: sql<number>`COUNT(*)` }).from(announcements)
+        .where(and(eq(announcements.schoolId, schoolId), gte(announcements.createdAt, sevenDaysAgo)));
+
 
       return NextResponse.json({
         success: true,
@@ -62,20 +64,18 @@ export async function GET() {
 
       const uniqueStudents = new Set(studentRows.map((r) => r.studentId)).size;
 
-      const [[unreadRow], [annRow]] = await Promise.all([
-        tx.select({ count: sql<number>`COUNT(*)` }).from(directMessages)
-          .where(and(
-            eq(directMessages.schoolId, schoolId),
-            eq(directMessages.receiverId, userId),
-            eq(directMessages.isRead, false),
-          )),
-        tx.select({ count: sql<number>`COUNT(*)` }).from(announcements)
-          .where(and(
-            eq(announcements.schoolId, schoolId),
-            eq(announcements.authorId, userId),
-            gte(announcements.createdAt, sevenDaysAgo),
-          )),
-      ]);
+      const [unreadRow] = await tx.select({ count: sql<number>`COUNT(*)` }).from(directMessages)
+        .where(and(
+          eq(directMessages.schoolId, schoolId),
+          eq(directMessages.receiverId, userId),
+          eq(directMessages.isRead, false),
+        ));
+      const [annRow] = await tx.select({ count: sql<number>`COUNT(*)` }).from(announcements)
+        .where(and(
+          eq(announcements.schoolId, schoolId),
+          eq(announcements.authorId, userId),
+          gte(announcements.createdAt, sevenDaysAgo),
+        ));
 
       return NextResponse.json({
         success: true,
@@ -88,18 +88,16 @@ export async function GET() {
     }
 
     if (role === "parent") {
-      const [[childRow], [annRow], [unreadRow]] = await Promise.all([
-        tx.select({ count: sql<number>`COUNT(*)` }).from(parentStudentLinks)
-          .where(eq(parentStudentLinks.parentId, userId)),
-        tx.select({ count: sql<number>`COUNT(*)` }).from(announcements)
-          .where(and(eq(announcements.schoolId, schoolId), gte(announcements.createdAt, sevenDaysAgo))),
-        tx.select({ count: sql<number>`COUNT(*)` }).from(directMessages)
-          .where(and(
-            eq(directMessages.schoolId, schoolId),
-            eq(directMessages.receiverId, userId),
-            eq(directMessages.isRead, false),
-          )),
-      ]);
+      const [childRow] = await tx.select({ count: sql<number>`COUNT(*)` }).from(parentStudentLinks)
+        .where(eq(parentStudentLinks.parentId, userId));
+      const [annRow] = await tx.select({ count: sql<number>`COUNT(*)` }).from(announcements)
+        .where(and(eq(announcements.schoolId, schoolId), gte(announcements.createdAt, sevenDaysAgo)));
+      const [unreadRow] = await tx.select({ count: sql<number>`COUNT(*)` }).from(directMessages)
+        .where(and(
+          eq(directMessages.schoolId, schoolId),
+          eq(directMessages.receiverId, userId),
+          eq(directMessages.isRead, false),
+        ));
 
       return NextResponse.json({
         success: true,

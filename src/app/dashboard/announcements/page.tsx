@@ -41,7 +41,7 @@ export default function AnnouncementsPage() {
   const [hasMore, setHasMore] = useState(true);
   const [filter, setFilter] = useState<FilterTab>("all");
   const [composeOpen, setComposeOpen] = useState(false);
-  const [cohorts] = useState<Cohort[]>([]);
+  const [cohorts, setCohorts] = useState<Cohort[]>([]);
 
   const offsetRef = useRef(0);
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -52,8 +52,26 @@ export default function AnnouncementsPage() {
     setPageTitle("Announcements");
   }, [setPageTitle]);
 
-  // TODO: populate `cohorts` from /api/cohorts so posts can target a class.
-  // The endpoint exists but is not wired up — until then, posts are school-wide.
+  // Cohorts for the compose panel's class selector. The endpoint is
+  // admin/teacher only and returns 403 otherwise, so only fetch when the user
+  // can actually compose. Admins get every cohort in the school; teachers get
+  // just the ones they are assigned to.
+  useEffect(() => {
+    if (!canCompose) return;
+
+    let cancelled = false;
+
+    fetch("/api/cohorts")
+      .then((r) => r.json())
+      .then((j) => {
+        if (!cancelled && j.success && Array.isArray(j.data)) setCohorts(j.data);
+      })
+      .catch((err) => console.error("Failed to load cohorts:", err));
+
+    return () => {
+      cancelled = true;
+    };
+  }, [canCompose]);
 
   const fetchAnnouncements = useCallback(async (reset = false) => {
     const currentOffset = reset ? 0 : offsetRef.current;

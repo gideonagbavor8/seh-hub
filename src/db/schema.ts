@@ -12,7 +12,7 @@ import {
 
 export const roleEnum = pgEnum("role", ["admin", "teacher", "parent", "student"]);
 export const priorityEnum = pgEnum("priority", ["standard", "emergency"]);
-export const notificationTypeEnum = pgEnum("type", ["announcement", "message", "emergency"]);
+export const notificationTypeEnum = pgEnum("type", ["announcement", "message", "emergency", "homework"]);
 export const jobStatusEnum = pgEnum("job_status", ["pending", "running", "success", "failed"]);
 
 const timestamps = {
@@ -117,6 +117,46 @@ export const notifications = pgTable("notifications", {
   type: notificationTypeEnum("type").notNull(),
   isRead: boolean("is_read").default(false),
   meta: jsonb("meta"),
+  ...timestamps,
+});
+
+export const homework = pgTable("homework", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  schoolId: uuid("school_id").notNull().references(() => schools.id, { onDelete: "cascade" }),
+  cohortId: uuid("cohort_id").notNull().references(() => cohorts.id, { onDelete: "cascade" }),
+  teacherId: uuid("teacher_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  subject: text("subject").notNull(),
+  title: text("title").notNull(),
+  instructions: text("instructions").notNull(),
+  dueDate: timestamp("due_date").notNull(),
+  ...timestamps,
+});
+
+/** One row per student who has ticked a piece of homework done. */
+export const homeworkCompletions = pgTable("homework_completions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  homeworkId: uuid("homework_id").notNull().references(() => homework.id, { onDelete: "cascade" }),
+  studentId: uuid("student_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  completedAt: timestamp("completed_at").defaultNow().notNull(),
+}, (t) => ({
+  unq: unique().on(t.homeworkId, t.studentId),
+}));
+
+/**
+ * A recurring weekly timetable period. Times are stored as "HH:MM" text rather
+ * than timestamps: a timetable is a wall-clock pattern, not a moment, so it
+ * must not shift with dates or time zones.
+ */
+export const timetableSlots = pgTable("timetable_slots", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  schoolId: uuid("school_id").notNull().references(() => schools.id, { onDelete: "cascade" }),
+  cohortId: uuid("cohort_id").notNull().references(() => cohorts.id, { onDelete: "cascade" }),
+  dayOfWeek: integer("day_of_week").notNull(), // ISO: 1 = Monday … 5 = Friday
+  startTime: text("start_time").notNull(),
+  endTime: text("end_time").notNull(),
+  subject: text("subject").notNull(),
+  teacherId: uuid("teacher_id").references(() => users.id, { onDelete: "set null" }),
+  room: text("room"),
   ...timestamps,
 });
 
